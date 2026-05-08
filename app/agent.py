@@ -8,10 +8,10 @@ from bs4 import BeautifulSoup
 
 import requests
 
-# ======================================
+# ===========================g76f7f===========
 # LLM
 # ======================================
-
+jj
 llm = ChatOpenAI(
     base_url="http://43.134.132.230:11434/v1",
     api_key="dummy",
