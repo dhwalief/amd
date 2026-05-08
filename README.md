@@ -32,6 +32,30 @@ Pastikan sistem Anda sudah terinstal [Poetry](https://python-poetry.org/) dan Py
    poetry install
    ```
 
+## Konfigurasi
+
+Saat ini, aplikasi mengarah ke server Ollama eksternal yang URL-nya ditulis langsung (*hardcode*) di dalam *source code*. Jika Anda perlu menghubungkan aplikasi ke *endpoint* atau *instance* server Ollama yang berbeda, silakan lakukan konfigurasi manual berikut:
+
+1. **Ubah Konfigurasi LLM**
+   Buka file `app/agent.py` dan temukan bagian inisialisasi `ChatOpenAI`. Ubah nilai `base_url` ke *endpoint* API Anda:
+   ```python
+   llm = ChatOpenAI(
+       base_url="http://<IP_ANDA>:11434/v1",
+       ...
+   )
+   ```
+
+2. **Ubah Konfigurasi Embeddings**
+   Masih di dalam `app/agent.py`, temukan inisialisasi `OllamaEmbeddings`. Sesuaikan nilai `base_url`:
+   ```python
+   embeddings = OllamaEmbeddings(
+       base_url="http://<IP_ANDA>:11434",
+       ...
+   )
+   ```
+
+*(Catatan: Anda juga dapat melakukan penyesuaian yang sama pada skrip pengujian di `app/test1.py` dan `app/test2.py` apabila diperlukan).*
+
 ## Cara Menjalankan
 
 Jalankan agen RAG utama dengan perintah berikut:
