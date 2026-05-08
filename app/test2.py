@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 from langchain_community.embeddings import OllamaEmbeddings
 
 embeddings = OllamaEmbeddings(

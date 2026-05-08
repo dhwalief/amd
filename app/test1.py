@@ -1,9 +1,9 @@
 from langchain_openai import ChatOpenAI
 
 llm = ChatOpenAI(
-    base_url="http://134.199.206.176:11434/v1",
+    base_url="http://134.199.206.176:8000/v1",
     api_key="dummy",
-    model="qwen2.5:3b",
+    model="qwen2.5:3b",fcfhdyhf
     temperature=0.7,
 )
 
