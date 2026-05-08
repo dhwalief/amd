@@ -11,13 +11,13 @@ import requests
 # ===========================g76f7f===========
 # LLM
 # ======================================
-jj
 llm = ChatOpenAI(
     base_url="http://43.134.132.230:11434/v1",
     api_key="dummy",
     model="qwen2.5:3b",
     temperature=0.3,
 )
+bhh
 
 # ======================================
 # Embedding Model
