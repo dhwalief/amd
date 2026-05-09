@@ -61,10 +61,10 @@ class TestMockSharedMemory:
     def test_deps_satisfied(self, memory):
         """Test: check if all dependencies are satisfied."""
         # Inquisitor has no deps, harus bisa langsung execute
-        assert memory.deps_satisfied([])
+        assert memory.deps_satisfied(AgentKey.INQUISITOR)
         
         # GEO_ANALYST depends on INQUISITOR
-        assert not memory.deps_satisfied(DAG[AgentKey.GEO_ANALYST])
+        assert not memory.deps_satisfied(AgentKey.GEO_ANALYST)
         
         # Set INQUISITOR as done
         output = InquisitorOutput(
@@ -78,12 +78,12 @@ class TestMockSharedMemory:
         memory.set(AgentKey.INQUISITOR, output)
         
         # Now GEO_ANALYST deps should be satisfied
-        assert memory.deps_satisfied(DAG[AgentKey.GEO_ANALYST])
+        assert memory.deps_satisfied(AgentKey.GEO_ANALYST)
 
     def test_list_executable_agents(self, memory):
         """Test: list agents yang bisa dijalankan sekarang."""
         # Only INQUISITOR pada awalnya
-        executable = memory.get_executable_agents(DAG)
+        executable = memory.get_ready_agents()
         assert AgentKey.INQUISITOR in executable
         assert AgentKey.GEO_ANALYST not in executable
         
@@ -98,7 +98,7 @@ class TestMockSharedMemory:
         )
         memory.set(AgentKey.INQUISITOR, output)
         
-        executable = memory.get_executable_agents(DAG)
+        executable = memory.get_ready_agents()
         assert AgentKey.GEO_ANALYST in executable
         assert AgentKey.COMPETITOR in executable
 

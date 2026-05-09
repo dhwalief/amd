@@ -38,7 +38,6 @@ from langchain.schema import Document
 
 logger = logging.getLogger(__name__)
 
-
 class RAGPipeline:
     """
     RAG pipeline untuk retrieve knowledge base documents.

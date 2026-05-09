@@ -23,7 +23,7 @@ async def run(memory: SharedMemory, **kwargs) -> OrchestratorReview:
     logger.info("Mulai eksekusi Orchestrator...")
     try:
         # Cek apakah Critic dan Risk Manager sudah selesai
-        if not memory.deps_satisfied([AgentKey.CRITIC, AgentKey.RISK_MANAGER]):
+        if not (memory.is_done(AgentKey.CRITIC) and memory.is_done(AgentKey.RISK_MANAGER)):
             return OrchestratorReview(
                 agent_name="orchestrator",
                 status=AgentStatus.LOCKED,
@@ -162,7 +162,6 @@ async def setup_and_run(memory: SharedMemory):
 
     # 1. Import semua agent dari agents/worker/, agents/analyst/, agents/executive/, agents/utility/
     
-    # --- Worker Agents ---
     try:
         from agents.worker.inquisitor import run as inquisitor_run
         engine.register_agent(AgentKey.INQUISITOR, inquisitor_run)
@@ -176,6 +175,16 @@ async def setup_and_run(memory: SharedMemory):
     try:
         from agents.worker.sop_designer import run as sop_designer_run
         engine.register_agent(AgentKey.SOP_DESIGNER, sop_designer_run)
+    except ImportError: pass
+
+    try:
+        from agents.worker.legal import run as legal_run
+        engine.register_agent(AgentKey.LEGAL, legal_run)
+    except ImportError: pass
+
+    try:
+        from agents.worker.hr_planner import run as hr_planner_run
+        engine.register_agent(AgentKey.HR_PLANNER, hr_planner_run)
     except ImportError: pass
 
     # --- Analyst Agents ---
@@ -194,6 +203,16 @@ async def setup_and_run(memory: SharedMemory):
         engine.register_agent(AgentKey.GROWTH_HACKER, growth_hacker_run)
     except ImportError: pass
 
+    try:
+        from agents.analyst.competitor_scout import run as competitor_scout_run
+        engine.register_agent(AgentKey.COMPETITOR, competitor_scout_run)
+    except ImportError: pass
+
+    try:
+        from agents.analyst.pricing_strategist import run as pricing_strategist_run
+        engine.register_agent(AgentKey.PRICING, pricing_strategist_run)
+    except ImportError: pass
+
     # --- Executive Agents ---
     # Critic & Risk Manager akan otomatis terdaftar jika sudah diimplementasikan
     try:
@@ -206,12 +225,20 @@ async def setup_and_run(memory: SharedMemory):
         engine.register_agent(AgentKey.RISK_MANAGER, risk_manager_run)
     except ImportError: pass
 
-    # --- Utility Agents ---
-    # Supply planner, dll
     try:
         from agents.utility.supply_planner import run as supply_planner_run
         engine.register_agent(AgentKey.SUPPLY_PLANNER, supply_planner_run)
     except ImportError: pass
+
+    try:
+        from agents.utility.schema_validator import run as schema_validator_run
+        engine.register_agent(AgentKey.SCHEMA_VALIDATOR, schema_validator_run) # asumsikan key tersedia
+    except Exception: pass
+
+    try:
+        from agents.utility.output_formatter import run as output_formatter_run
+        engine.register_agent(AgentKey.OUTPUT_FORMATTER, output_formatter_run)
+    except Exception: pass
 
     # 4. Jalankan engine.run_all()
     logger.info("Mengeksekusi semua agent via DependencyEngine...")
