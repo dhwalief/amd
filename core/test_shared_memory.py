@@ -11,8 +11,8 @@ Jalankan: pytest test_shared_memory.py -v
 
 import pytest
 from datetime import datetime
-from schemas import AgentOutput, AgentStatus, BusinessContext, InquisitorOutput
-from shared_memory import AgentKey, MockSharedMemory, DAG
+from core.schemas import AgentOutput, AgentStatus, BusinessContext, InquisitorOutput
+from core.shared_memory import AgentKey, MockSharedMemory, DAG
 
 
 class TestMockSharedMemory:
