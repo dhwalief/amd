@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from langchain_openai import ChatOpenAI
+# pyrefly: ignore [missing-import]
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import ValidationError
 
@@ -13,6 +13,7 @@ from core.schemas import (
     PricingOutput, 
     AgentStatus
 )
+from core.factory import create_llm
 from config.config import AGENT_CONFIG
 
 logger = logging.getLogger(__name__)
@@ -66,22 +67,7 @@ async def run(memory: SharedMemory) -> Optional[PricingOutput]:
         risk_factors = ", ".join(geo_data.risk_factors) if geo_data.risk_factors else "Tidak ada"
         
         # 3. Setup LLM
-        config = AGENT_CONFIG.get("analyst_pool", {})
-        base_url = config.get("base_url")
-        model_name = config.get("model")
-        
-        if not base_url or not model_name:
-            error_msg = "Konfigurasi analyst_pool tidak lengkap di config.py"
-            logger.error(error_msg)
-            memory.set_failed(AgentKey.PRICING, error_msg)
-            return None
-            
-        llm = ChatOpenAI(
-            base_url=base_url,
-            model=model_name,
-            temperature=0.1,  # Diminta temperature 0.1
-            api_key="empty",
-        )
+        llm = create_llm("analyst_pool", temperature=0.1)
         
         llm_with_tools = llm.with_structured_output(PricingOutput)
         

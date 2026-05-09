@@ -1,12 +1,13 @@
 import logging
 from typing import Optional
 
-from langchain_openai import ChatOpenAI
+# pyrefly: ignore [missing-import]
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import ValidationError
 
 from core.shared_memory import SharedMemory, AgentKey
 from core.schemas import InquisitorOutput, CompetitorScoutOutput, AgentStatus
+from core.factory import create_llm
 from config.config import AGENT_CONFIG
 
 logger = logging.getLogger(__name__)
@@ -33,22 +34,7 @@ async def run(memory: SharedMemory) -> Optional[CompetitorScoutOutput]:
         business_context = inquisitor_data.business_context
         
         # 3. Setup LLM
-        config = AGENT_CONFIG.get("scout_inquisitor_pool", {})
-        base_url = config.get("base_url")
-        model_name = config.get("model")
-        
-        if not base_url or not model_name:
-            error_msg = "Konfigurasi scout_inquisitor_pool tidak lengkap di config.py"
-            logger.error(error_msg)
-            memory.set_failed(AgentKey.COMPETITOR, error_msg)
-            return None
-            
-        llm = ChatOpenAI(
-            base_url=base_url,
-            model=model_name,
-            temperature=0.3,
-            api_key="empty",  # For vLLM compatible endpoints
-        )
+        llm = create_llm("scout_inquisitor_pool", temperature=0.3)
         
         # Gunakan structured output sesuai schema Pydantic
         llm_with_tools = llm.with_structured_output(CompetitorScoutOutput)

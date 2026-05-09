@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from langchain_openai import ChatOpenAI
+# pyrefly: ignore [missing-import]
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import ValidationError
 
@@ -20,6 +20,7 @@ from core.schemas import (
     CriticOutput,
     AgentStatus
 )
+from core.factory import create_llm
 from config.config import AGENT_CONFIG
 
 logger = logging.getLogger(__name__)
@@ -55,22 +56,7 @@ async def run(memory: SharedMemory) -> Optional[CriticOutput]:
         context_string += extract_agent_data(AgentKey.SOP_DESIGNER, SOPOutput)
 
         # 3. Setup LLM
-        config = AGENT_CONFIG.get("critic", {})
-        base_url = config.get("base_url")
-        model_name = config.get("model")
-        
-        if not base_url or not model_name:
-            error_msg = "Konfigurasi 'critic' tidak lengkap di config.py"
-            logger.error(error_msg)
-            memory.set_failed(AgentKey.CRITIC, error_msg)
-            return None
-            
-        llm = ChatOpenAI(
-            base_url=base_url,
-            model=model_name,
-            temperature=0.2, # Sesuai instruksi untuk analisis kritis yang stabil
-            api_key="empty",
-        )
+        llm = create_llm("critic", temperature=0.2)
         
         llm_with_tools = llm.with_structured_output(CriticOutput)
         
