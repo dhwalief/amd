@@ -1,11 +1,11 @@
 import logging
 import json
+from core.factory import create_llm
 # pyrefly: ignore [missing-import]
-from langchain_openai import ChatOpenAI
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
+# pyrefly: ignore [missing-import]
 from pydantic import ValidationError
 
-from config.config import AGENT_CONFIG
 from core.schemas import GeoAnalystOutput, InquisitorOutput, AgentStatus
 from core.shared_memory import SharedMemory, AgentKey
 
@@ -42,18 +42,8 @@ async def run(memory: SharedMemory) -> GeoAnalystOutput:
             
         context = inquisitor_data.business_context
         
-        # Konfigurasi LLM
-        config = AGENT_CONFIG["analyst_pool"]
-        
-        # Inisialisasi LLM via Langchain
-        llm = ChatOpenAI(
-            base_url=config["base_url"],
-            model=config["model"],
-            temperature=0.4,
-            timeout=120,
-            max_retries=2,
-            api_key="empty"  # vLLM API server usually accepts dummy keys
-        )
+        # Inisialisasi LLM via Factory
+        llm = create_llm("analyst_pool", temperature=0.4, timeout=120)
         
         # 3. Buat System Prompt
         prompt = PromptTemplate.from_template(
@@ -151,6 +141,22 @@ Panduan pengisian nilai JSON:
         memory.set_failed(AgentKey.GEO_ANALYST, error_msg)
         return output
         
+    except Exception as e:
+        error_msg = f"Eksekusi gagal: {str(e)}"
+        logger.error(error_msg)
+        
+        output = GeoAnalystOutput(
+            status=AgentStatus.FAILED, 
+            error_message=error_msg,
+            location_score=0.0,
+            demand_level="low",
+            foot_traffic_estimate="",
+            nearby_anchor=[],
+            risk_factors=[],
+            recommendation=""
+        )
+        memory.set_failed(AgentKey.GEO_ANALYST, error_msg)
+        return output
     except Exception as e:
         error_msg = f"Eksekusi gagal: {str(e)}"
         logger.error(error_msg)

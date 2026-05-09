@@ -1,13 +1,11 @@
 import logging
 import json
+from core.factory import create_llm
 # pyrefly: ignore [missing-import]
-from langchain_openai import ChatOpenAI
-# pyrefly: ignore [missing-import]
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 # pyrefly: ignore [missing-import]
 from pydantic import ValidationError
 
-from config.config import AGENT_CONFIG
 from core.schemas import FinanceOutput, MarketOutput, PricingOutput, AgentStatus, CostItem
 from core.shared_memory import SharedMemory, AgentKey
 
@@ -56,18 +54,8 @@ async def run(memory: SharedMemory) -> FinanceOutput:
             memory.set_failed(AgentKey.CFO, error_msg)
             return output
         
-        # Konfigurasi LLM
-        config = AGENT_CONFIG["cfo"]
-        
-        # Inisialisasi LLM via Langchain
-        llm = ChatOpenAI(
-            base_url=config["base_url"],
-            model=config["model"],
-            temperature=0.6,
-            timeout=120,
-            max_retries=2,
-            api_key="empty"
-        )
+        # Inisialisasi LLM via Factory
+        llm = create_llm("cfo", temperature=0.6, timeout=120)
         
         # 3. Buat System Prompt
         prompt = PromptTemplate.from_template(

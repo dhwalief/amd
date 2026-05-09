@@ -1,10 +1,11 @@
 import logging
 import json
-from langchain_openai import ChatOpenAI
-from langchain.prompts import PromptTemplate
+# pyrefly: ignore [missing-import]
+from langchain_core.prompts import PromptTemplate
+# pyrefly: ignore [missing-import]
 from pydantic import ValidationError
 
-from config.config import AGENT_CONFIG
+from core.factory import create_llm
 from core.schemas import InquisitorOutput, BusinessContext, AgentStatus
 from core.shared_memory import SharedMemory, AgentKey
 
@@ -20,18 +21,8 @@ async def run(memory: SharedMemory, user_input: str = "") -> InquisitorOutput:
     memory.set_status(AgentKey.INQUISITOR, AgentStatus.RUNNING)
     
     try:
-        # Konfigurasi LLM
-        config = AGENT_CONFIG["scout_inquisitor_pool"]
-        
-        # Inisialisasi LLM via Langchain
-        llm = ChatOpenAI(
-            base_url=config["base_url"],
-            model=config["model"],
-            temperature=0.5,
-            timeout=120,
-            max_retries=2,
-            api_key="empty"  # vLLM API server usually accepts dummy keys
-        )
+        # Inisialisasi LLM via Factory
+        llm = create_llm("scout_inquisitor_pool", temperature=0.5, timeout=120)
         
         # 2. Buat System Prompt
         prompt = PromptTemplate.from_template(

@@ -17,8 +17,8 @@ import logging
 import streamlit as st
 from typing import Dict, List, Optional
 
-from shared_memory import AgentKey, DAG
-from schemas import AgentStatus, AgentOutput
+from core.shared_memory import AgentKey, DAG
+from core.schemas import AgentStatus, AgentOutput
 
 logger = logging.getLogger(__name__)
 

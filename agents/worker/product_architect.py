@@ -1,13 +1,11 @@
 import logging
 import json
+from core.factory import create_llm
 # pyrefly: ignore [missing-import]
-from langchain_openai import ChatOpenAI
-# pyrefly: ignore [missing-import]
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 # pyrefly: ignore [missing-import]
 from pydantic import ValidationError
 
-from config.config import AGENT_CONFIG
 from core.schemas import OpsOutput, MarketOutput, AgentStatus, EquipmentItem
 from core.shared_memory import SharedMemory, AgentKey
 
@@ -43,18 +41,8 @@ async def run(memory: SharedMemory) -> OpsOutput:
             memory.set_failed(AgentKey.PRODUCT_ARCHITECT, error_msg)
             return output
         
-        # Konfigurasi LLM
-        config = AGENT_CONFIG["worker_pool"]
-        
-        # Inisialisasi LLM via Langchain
-        llm = ChatOpenAI(
-            base_url=config["base_url"],
-            model=config["model"],
-            temperature=0.4,
-            timeout=120,
-            max_retries=2,
-            api_key="empty"
-        )
+        # Inisialisasi LLM via Factory
+        llm = create_llm("worker_pool", temperature=0.4, timeout=120)
         
         # 3. Buat System Prompt
         prompt = PromptTemplate.from_template(
