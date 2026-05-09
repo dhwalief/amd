@@ -25,5 +25,8 @@ root/
 │   ├── legal_docs/             # RAG sederhana (PDF/Text)
 │   └── templates/              # Template Markdown untuk Report
 │
-└── output/                     # PERSISTENCE
+└── output/                     # PERSISTENCE dan LONG TERM MEMORY
     └── reports/                # Markdown hasil generate per sesi
+
+---
+**Status:** ✅ Struktur dasar telah diimplementasikan sesuai plan pada branch `main`.
