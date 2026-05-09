@@ -1,73 +1,75 @@
-# Go to America (LangChain RAG Agent)
+# Go to America — Multi-Agent System (v5)
 
-Proyek ini merupakan implementasi sederhana dari **Retrieval-Augmented Generation (RAG)** menggunakan ekosistem Python, LangChain, dan model dari server Ollama. Aplikasi ini memungkinkan pencarian otomatis ke internet (DuckDuckGo Search) untuk merangkum dan menjawab pertanyaan berdasarkan topik yang dimasukkan oleh pengguna.
+Proyek ini adalah implementasi **Sistem Multi-Agent** berkinerja tinggi yang dirancang untuk merencanakan strategi bisnis "Go to America" secara otomatis. Sistem ini menggunakan berbagai agen terspesialisasi yang ditenagai oleh model bahasa berlisensi terbuka (Apache 2.0 & MIT) seperti keluarga Qwen2.5 dan DeepSeek R1 Distill Llama, dioptimalkan untuk berjalan pada infrastruktur 4× AMD Instinct MI300X GPUs.
 
-## Arsitektur
+## Arsitektur Layered Agent
 
-Proyek ini dibangun dengan komponen utama sebagai berikut:
-- **Bahasa Pemrograman:** Python 3.11+
-- **Manajemen Dependency:** Poetry
-- **Framework Utama:** LangChain
-- **Pencarian Web (Search):** DuckDuckGo Search API
-- **Web Scraping:** BeautifulSoup4 & lxml
-- **Vector Store:** FAISS (Memory-based, CPU)
-- **Embeddings Model:** `nomic-embed-text` (via instance server Ollama eksternal)
-- **Large Language Model (LLM):** `qwen2.5:3b` (via ChatOpenAI wrapper ke instance server Ollama eksternal)
+Sistem ini terbagi ke dalam 4 layer utama yang bekerja secara asinkron dengan dependensi berbasis Directed Acyclic Graph (DAG):
+
+1. **Executive Layer**
+   - Orchestrator (Qwen2.5-72B): Pengendali utama dan perutean tugas kompleks.
+   - Critic / Gap Finder (Qwen3-32B): Mendeteksi kontradiksi antar output agen.
+   - Risk Manager (R1 Distill Llama-70B): Analisis skenario risiko bisnis kompleks.
+
+2. **Analyst Layer**
+   - Terdiri dari Geo Analyst, Competitor Scout, Growth Hacker, CFO, dan Pricing Strategist.
+   - Didukung oleh model keluarga Qwen2.5 (7B–14B) & R1 Distill Qwen-14B untuk penalaran analisis spesifik domain.
+
+3. **Worker Layer**
+   - Terdiri dari Inquisitor, Legal & Compliance, Product Architect, HR Planner, dan SOP Designer.
+   - Berjalan pada model Qwen2.5 (3B–14B) dengan tugas memproduksi standar operasional dan validasi praktis.
+
+4. **Utility Layer**
+   - Fungsi deterministik Python murni tanpa LLM untuk akurasi tinggi dan tanpa halusinasi (contoh: BEP Calculator, Cashflow Simulator, Supply Planner, Schema Validator).
 
 ## Struktur Direktori Utama
 
-- `app/agent.py`: Modul utama / aplikasi RAG. Berisi *pipeline* lengkap dari menerima input, mencari ke web, memotong dokumen, membuat representasi vektor, mengambil konteks, hingga membuat jawaban menggunakan LLM.
-- `app/test1.py`: Skrip pengujian konektivitas LLM.
-- `app/test2.py`: Skrip pengujian konektivitas Embeddings.
-- `docs/analysis/`: Dokumentasi hasil analisa struktur dan arsitektur aplikasi.
-- `docs/work/`: Dokumentasi *changelog* pekerjaan dan keputusan teknis harian.
+- `.agent/` : Dokumen panduan, blueprint (*plan*), dan *rules* untuk agen *AI Assistant*.
+- `.env` : Konfigurasi *endpoint* vLLM (MI300X) & API Keys.
+- `app/` : Antarmuka *Frontend* (Streamlit).
+- `core/` : *Backend Engine*, manajemen *state* asinkron (*Shared Memory*), skema Pydantic, dan konektor LLM.
+- `agents/` : Kumpulan logika internal tiap *agent* (Executive, Analyst, Worker, Utility).
+- `data/` : Basis pengetahuan lokal, basis data *RAG* dasar, dokumen legal, dan *template* laporan.
+- `pyproject.toml` / `poetry.lock` : File pengelola *dependency*.
+
+## Infrastruktur & Model
+
+Sistem mengadopsi arsitektur pemisahan *container*:
+- **Model Container:** Menjalankan mesin *inference* (seperti vLLM) yang memuat *weights* ke dalam GPU (1 *container* per model independen).
+- **Agent Container:** Menjalankan logika bisnis (prompt, tool) dan saling berkomunikasi lewat API HTTP, tanpa saling menumpuk dan mencampur konteks.
+
+Model telah direvisi penuh (v5) untuk mengatasi isu *Out of Memory* (OOM), memprioritaskan kemampuan Bahasa Indonesia & Inggris, dan kepatuhan penuh lisensi komersial bebas (Apache 2.0/MIT).
 
 ## Prasyarat & Instalasi
 
-Pastikan sistem Anda sudah terinstal [Poetry](https://python-poetry.org/) dan Python versi 3.11+.
+Disarankan untuk menjalankan secara penuh menggunakan 4× AMD Instinct MI300X 192GB. 
 
-1. Clone repositori ini dan masuk ke dalam folder proyek.
-2. Install seluruh *dependencies* menggunakan Poetry:
+1. **Persiapan Repositori**
+   ```bash
+   git clone <repo-url>
+   cd goto-america
+   ```
+
+2. **Instalasi Dependencies (Untuk Pengembangan Lokal)**
+   Pastikan Anda menggunakan Python 3.11+ dan [Poetry](https://python-poetry.org/):
    ```bash
    poetry install
    ```
 
-## Konfigurasi
-
-Saat ini, aplikasi mengarah ke server Ollama eksternal yang URL-nya ditulis langsung (*hardcode*) di dalam *source code*. Jika Anda perlu menghubungkan aplikasi ke *endpoint* atau *instance* server Ollama yang berbeda, silakan lakukan konfigurasi manual berikut:
-
-1. **Ubah Konfigurasi LLM**
-   Buka file `app/agent.py` dan temukan bagian inisialisasi `ChatOpenAI`. Ubah nilai `base_url` ke *endpoint* API Anda:
-   ```python
-   llm = ChatOpenAI(
-       base_url="http://<IP_ANDA>:11434/v1",
-       ...
-   )
+3. **Menjalankan Sistem**
+   Untuk menginisialisasi eksekusi model (baik secara kontainer terpisah atau *development server*), Anda dapat menyesuaikan konfigurasi `.env` dan menjalankannya melalui perintah skrip atau *docker-compose*.
+   Contoh:
+   ```bash
+   poetry run python app/main.py
    ```
+   *(Catatan: Lihat dokumen di dalam `.agent/plan/` untuk melihat `docker run` command lengkap bagi model-model spesifik).*
 
-2. **Ubah Konfigurasi Embeddings**
-   Masih di dalam `app/agent.py`, temukan inisialisasi `OllamaEmbeddings`. Sesuaikan nilai `base_url`:
-   ```python
-   embeddings = OllamaEmbeddings(
-       base_url="http://<IP_ANDA>:11434",
-       ...
-   )
-   ```
+## Aturan & Dokumentasi Pengembangan
 
-*(Catatan: Anda juga dapat melakukan penyesuaian yang sama pada skrip pengujian di `app/test1.py` dan `app/test2.py` apabila diperlukan).*
+Untuk memahami detail pengembangan lebih dalam, silakan baca dokumentasi *blueprint*:
+- **[Agent Structure Plan](./.agent/plan/agent-structure-plan.md)**: Detail lengkap VRAM, alokasi GPU, model, dan alur DAG.
+- **[Project Structure Plan](./.agent/plan/project-structure.md)**: Gambaran arsitektur direktori.
 
-## Cara Menjalankan
-
-Jalankan agen RAG utama dengan perintah berikut:
-
-```bash
-poetry run python app/agent.py
-```
-
-Setelah aplikasi berjalan, program akan meminta Anda untuk memasukkan topik. Program kemudian akan melakukan pencarian artikel web, memproses teks tersebut, dan menyusun jawaban menggunakan Qwen2.5.
-
-## Dokumentasi Proyek
-
-Untuk memahami lebih lanjut mengenai desain, arsitektur, dan rekam jejak pekerjaan, silakan lihat folder dokumentasi berikut:
-- **[Analisis Proyek & Arsitektur](./docs/analysis/project_analysis.md)**
-- **[Catatan Pekerjaan](./docs/work/)**
+> **PERHATIAN (Sesuai `.agent/rules.md`)**:
+> 1. JANGAN UBAH `config.py` secara sembarangan.
+> 2. SELALU BACA `plan.md` di direktori `.agent/plan/` sebelum memulai tugas pengembangan apa pun.
