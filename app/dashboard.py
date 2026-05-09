@@ -16,15 +16,33 @@ Jalankan: streamlit run app/dashboard.py
 
 import asyncio
 import logging
+import sys
+import os
+import threading
 from datetime import datetime
+
+# Tambahkan root directory ke PYTHONPATH agar bisa mengimpor 'core'
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import streamlit as st
 
 from core.shared_memory import MockSharedMemory, AgentKey
-from core.schemas import BusinessContext, InquisitorOutput, AgentStatus
+from core.schemas import BusinessContext, InquisitorOutput, AgentStatus, AgentOutput
 from app.components import display_dag_status, display_progress_bar, display_agent_output
 
 logger = logging.getLogger(__name__)
+
+def run_ai_in_background(memory):
+    from agents.executive.orchestrator import setup_and_run
+    import asyncio
+    
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(setup_and_run(memory))
+        loop.close()
+    except Exception as e:
+        logger.error(f"Error in AI background thread: {e}")
 
 # Streamlit page config
 st.set_page_config(
@@ -118,6 +136,12 @@ with st.sidebar:
         st.session_state.memory.set(AgentKey.INQUISITOR, output)
         st.session_state.execution_started = True
         
+        # Start AI in background thread
+        from streamlit.runtime.scriptrunner import add_script_run_ctx
+        thread = threading.Thread(target=run_ai_in_background, args=(st.session_state.memory,))
+        add_script_run_ctx(thread)
+        thread.start()
+        
         st.success("✅ Context stored! Starting agent execution...")
 
 
@@ -191,22 +215,29 @@ with tab2:
         with col1:
             st.write("**Executive Layer**")
             for agent_key in [AgentKey.ORCHESTRATOR, AgentKey.CRITIC, AgentKey.RISK_MANAGER]:
-                if status_snapshot[agent_key.value] == "done":
-                    output = st.session_state.memory.get(agent_key, AgentOutput)
-                    # TODO: display_agent_output(agent_key.value, output)
+                if status_snapshot.get(agent_key.value) == "done":
                     st.success(f"✅ {agent_key.value}")
+                    with st.expander(f"Lihat Hasil {agent_key.value}"):
+                        output = st.session_state.memory.get(agent_key, AgentOutput)
+                        display_agent_output(agent_key.value, output)
         
         with col2:
             st.write("**Analyst Layer**")
             for agent_key in [AgentKey.GEO_ANALYST, AgentKey.COMPETITOR, AgentKey.GROWTH_HACKER, AgentKey.CFO, AgentKey.PRICING]:
-                if status_snapshot[agent_key.value] == "done":
+                if status_snapshot.get(agent_key.value) == "done":
                     st.success(f"✅ {agent_key.value}")
+                    with st.expander(f"Lihat Hasil {agent_key.value}"):
+                        output = st.session_state.memory.get(agent_key, AgentOutput)
+                        display_agent_output(agent_key.value, output)
         
         with col3:
             st.write("**Worker Layer**")
-            for agent_key in [AgentKey.INQUISITOR, AgentKey.LEGAL, AgentKey.PRODUCT_ARCHITECT, AgentKey.HR_PLANNER]:
-                if status_snapshot[agent_key.value] == "done":
+            for agent_key in [AgentKey.INQUISITOR, AgentKey.LEGAL, AgentKey.PRODUCT_ARCHITECT, AgentKey.HR_PLANNER, AgentKey.SOP_DESIGNER]:
+                if status_snapshot.get(agent_key.value) == "done":
                     st.success(f"✅ {agent_key.value}")
+                    with st.expander(f"Lihat Hasil {agent_key.value}"):
+                        output = st.session_state.memory.get(agent_key, AgentOutput)
+                        display_agent_output(agent_key.value, output)
 
 
 with tab3:
