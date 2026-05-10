@@ -50,33 +50,49 @@ async def run(memory: SharedMemory, **kwargs) -> OrchestratorReview:
             )
 
         llm = create_llm("orchestrator", temperature=0.3)
-        
+
+        # Baca preferensi bahasa
+        lang = memory.get_language()
+        lang_instruction = "Respond in English." if lang == "en" else "Jawab dalam Bahasa Indonesia."
+
+        # PENTING: Gunakan string biasa + inject lang_instruction via concatenation
+        # Jangan gunakan f-string karena {critic_risk_level} dll adalah PromptTemplate variables
+        template_body = (
+            f"Anda adalah Chief Executive Officer (CEO) sekaligus Orchestrator dari multi-agent system **perencanaan bisnis**.\n"
+            f"{lang_instruction}\n"
+            "Tugas Anda adalah membaca laporan dari tim evaluasi (Critic dan Risk Manager), lalu memberikan keputusan akhir apakah rencana bisnis ini layak dieksekusi.\n\n"
+            "KONTEKS PENTING: Semua data yang Anda baca adalah PROYEKSI DAN RENCANA berbasis riset pasar — "
+            "angka-angka estimasi berasal dari hasil pencarian web (harga pasar, tarif SDM, biaya peralatan, data kompetitor) "
+            "yang dikumpulkan oleh agen analis. Ini bukan laporan keuangan aktual. "
+            'Anda sedang mengevaluasi sebuah **rencana** sebelum bisnis tersebut berdiri, gunakan bahasa: "rencana", "proyeksi", "estimasi berbasis riset".\n\n'
+            "# Laporan Critic\n"
+            "Risk Level Proyeksi: {critic_risk_level}\n"
+            "Apakah rencana butuh revisi: {critic_revision}\n"
+            "Jumlah Isu Kritikal: {critic_critical_count}\n"
+            "Ringkasan Critic: {critic_summary}\n\n"
+            "# Laporan Risk Manager\n"
+            "Viabilitas Rencana: {risk_viability}\n"
+            "Skenario Terburuk: {risk_worst_case}\n"
+            "Skenario Terbaik: {risk_best_case}\n\n"
+            "Berikan review akhir dalam format JSON.\n"
+            "Schema output:\n"
+            "{{\n"
+            '    "approved": bool,\n'
+            '    "final_recommendation": "string (rekomendasi singkat, padat, berbasis proyeksi bisnis)",\n'
+            '    "executive_summary": "string (rangkuman evaluasi rencana, gunakan bahasa proyeksi, rencana, estimasi berbasis riset)",\n'
+            '    "next_steps": ["langkah bisnis 1 untuk owner", "langkah bisnis 2", ...],\n'
+            '    "reasoning": "2-3 paragraf alur berpikir naratif Anda"\n'
+            "}}\n\n"
+            "PENTING untuk next_steps:\n"
+            "- Isinya adalah LANGKAH AKSI BISNIS yang bisa dilakukan oleh pemilik/calon pemilik bisnis.\n"
+            '- JANGAN tulis langkah teknis sistem seperti "perbaiki error parsing" atau "debug agen".\n'
+            '- Contoh yang BENAR: "Negosiasikan harga bahan baku dengan supplier agar HPP turun di bawah harga jual".\n'
+            '- Contoh yang SALAH: "Perbaiki error parsing JSON pada CFO agent".\n\n'
+            "Keluarkan HANYA JSON tanpa format lain."
+        )
+
         prompt = PromptTemplate(
-            template='''Anda adalah Chief Executive Officer (CEO) sekaligus Orchestrator dari multi-agent system perencanaan bisnis.
-Tugas Anda adalah membaca laporan dari tim evaluasi (Critic dan Risk Manager), lalu memberikan keputusan akhir apakah rencana bisnis ini layak dijalankan (approved) atau tidak.
-
-# Laporan Critic
-Risk Level Keseluruhan: {critic_risk_level}
-Apakah butuh revisi: {critic_revision}
-Jumlah Isu Kritikal: {critic_critical_count}
-Ringkasan Critic: {critic_summary}
-
-# Laporan Risk Manager
-Viability Keseluruhan: {risk_viability}
-Worst Case Scenario: {risk_worst_case}
-Best Case Scenario: {risk_best_case}
-
-Berikan review akhir dalam format JSON.
-Schema output:
-{{
-    "approved": bool,
-    "final_recommendation": "string",
-    "executive_summary": "string",
-    "next_steps": ["langkah 1", "langkah 2"]
-}}
-
-Keluarkan HANYA JSON tanpa format lain (jangan gunakan blok markdown atau backtick jika tidak perlu, tapi pastikan valid JSON).
-''',
+            template=template_body,
             input_variables=[
                 "critic_risk_level", "critic_revision", "critic_critical_count", "critic_summary",
                 "risk_viability", "risk_worst_case", "risk_best_case"
@@ -93,16 +109,15 @@ Keluarkan HANYA JSON tanpa format lain (jangan gunakan blok markdown atau backti
             risk_best_case=risk_data.best_case_summary
         )
 
-        response = await llm.ainvoke(formatted_prompt)
-        content = response.content.strip()
-        
-        # Bersihkan format JSON jika LLM membungkus dengan markdown block
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-        elif content.startswith("```"):
-            content = content[3:-3].strip()
+        from core.llm_utils import invoke_with_retry, safe_parse_json
+        content = await invoke_with_retry(llm, formatted_prompt, max_retries=3, agent_name="orchestrator")
+        if not content:
+            raise json.JSONDecodeError("LLM returned empty after retries", "", 0)
 
-        parsed_data = json.loads(content)
+        parsed_data = safe_parse_json(content, agent_name="orchestrator")
+        if parsed_data is None:
+            raise json.JSONDecodeError("safe_parse_json failed", content, 0)
+
         
         result = OrchestratorReview(
             agent_name="orchestrator",
@@ -110,7 +125,8 @@ Keluarkan HANYA JSON tanpa format lain (jangan gunakan blok markdown atau backti
             approved=parsed_data.get("approved", False),
             final_recommendation=parsed_data.get("final_recommendation", ""),
             executive_summary=parsed_data.get("executive_summary", ""),
-            next_steps=parsed_data.get("next_steps", [])
+            next_steps=parsed_data.get("next_steps", []),
+            reasoning=parsed_data.get("reasoning", None)
         )
         
         # Simpan ke shared memory
@@ -240,6 +256,18 @@ async def setup_and_run(memory: SharedMemory):
         engine.register_agent(AgentKey.OUTPUT_FORMATTER, output_formatter_run)
     except Exception: pass
 
+    # Register Orchestrator (dirinya sendiri)
+    engine.register_agent(AgentKey.ORCHESTRATOR, run)
+
+    # Register Proposal Generator
+    try:
+        from agents.executive.proposal_generator import run as proposal_generator_run
+        engine.register_agent(AgentKey.PROPOSAL_GENERATOR, proposal_generator_run)
+    except ImportError as e:
+        logger.error(f"Gagal mengimpor proposal_generator: {e}")
+
+
+
     # 4. Jalankan engine.run_all()
     logger.info("Mengeksekusi semua agent via DependencyEngine...")
     results = await engine.run_all()
@@ -247,24 +275,21 @@ async def setup_and_run(memory: SharedMemory):
     
     logger.info(f"Summary Engine Run: {json.dumps(summary, indent=2)}")
     
-    # 5. Setelah semua selesai, jalankan run(memory) untuk final review
-    logger.info("Menjalankan Orchestrator untuk Final Review...")
-    final_review = await run(memory)
+    # Cek apakah sistem sedang menunggu intervensi (Paused di Virtual Node)
+    ready_agents = memory.get_ready_agents()
+    virtual_nodes = [k for k in ready_agents if k not in engine.registry]
     
-    # 6. Print summary hasil eksekusi
-    print("\n" + "="*40)
-    print("      HASIL AKHIR ORCHESTRATOR      ")
-    print("="*40)
-    print(f"Status              : {final_review.status.value}")
-    if final_review.status == AgentStatus.DONE:
-        print(f"Approved            : {final_review.approved}")
-        print(f"Executive Summary   : {final_review.executive_summary}")
-        print(f"Final Recommendation: {final_review.final_recommendation}")
-        print("\nNext Steps:")
-        for step in final_review.next_steps:
-            print(f"- {step}")
+    if virtual_nodes:
+        logger.info(f"Engine Paused. Menunggu input user untuk node: {[v.value for v in virtual_nodes]}")
+        return
     else:
-        print(f"Error Message       : {final_review.error_message}")
+        logger.info("Semua tahapan DAG selesai dieksekusi tanpa hambatan atau jeda lebih lanjut.")
+        
+        if memory.is_done(AgentKey.ORCHESTRATOR):
+            final_review = memory.get(AgentKey.ORCHESTRATOR, OrchestratorReview)
+            logger.info(f"HASIL AKHIR ORCHESTRATOR: Approved={final_review.approved} | {final_review.executive_summary}")
+
+
 
 
 if __name__ == "__main__":

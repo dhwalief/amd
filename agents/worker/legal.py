@@ -53,13 +53,20 @@ async def run(memory: SharedMemory) -> Optional[LegalOutput]:
             memory.set_failed(AgentKey.LEGAL, error_msg)
             return None
             
-        # Ambil konteks bisnis dari Inquisitor
+        # Ambil konteks bisnis dari Proposal Terpilih
+        proposal = memory.get_selected_proposal()
         inquisitor_data = memory.get(AgentKey.INQUISITOR, InquisitorOutput)
         business_type = "Bisnis Umum"
         location = "Indonesia"
-        if inquisitor_data and inquisitor_data.business_context:
+        
+        if proposal:
+            business_type = proposal.title
+        elif inquisitor_data and inquisitor_data.business_context:
             business_type = inquisitor_data.business_context.business_idea or inquisitor_data.business_context.preferred_sector or business_type
+            
+        if inquisitor_data and inquisitor_data.business_context:
             location = inquisitor_data.business_context.location
+
 
         # 3. Eksekusi RAG Pipeline
         rag_context = ""

@@ -39,28 +39,39 @@ async def run(memory: SharedMemory) -> Optional[RiskManagerOutput]:
         
         # 3. Setup LLM
         llm = create_llm("risk_manager", temperature=0.1)
-        
+
+        # Baca preferensi bahasa
+        lang = memory.get_language()
+        lang_instruction = "Respond in English." if lang == "en" else "Jawab dalam Bahasa Indonesia."
+
         llm_with_tools = llm.with_structured_output(RiskManagerOutput)
+
         
         # 4. Setup Prompt
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """Anda adalah Chief Risk Officer (Risk Manager) profesional.
-Tugas Anda adalah meninjau laporan hasil audit (dari Executive Critic) dan merumuskan manajemen risiko untuk bisnis ini.
+            ("system", f"""Anda adalah Chief Risk Officer (Risk Manager) profesional.
+{lang_instruction}
+Tugas Anda adalah meninjau temuan dari Executive Critic dan merumuskan manajemen risiko untuk **rencana bisnis** ini.
+
+KONTEKS PENTING: Semua data yang Anda terima adalah PROYEKSI DAN RENCANA berbasis riset pasar — angka-angka estimasi berasal dari hasil pencarian web (harga pasar, tarif SDM, data kompetitor, dll) yang dikumpulkan secara real-time oleh agen analis. Ini bukan laporan keuangan aktual. Anda sedang menilai risiko dari sebuah rencana yang belum terealisasi, sehingga gunakan bahasa "proyeksi", "rencana", "estimasi berdasarkan riset".
+
 Anda diwajibkan untuk:
-1. Menyusun minimal 5 skenario risiko bisnis (`risk_scenarios`) yang realistis berdasarkan isu-isu dari Critic. Tiap skenario harus punya name, probability ("high", "medium", "low"), impact ("high", "medium", "low"), dan mitigasi.
-2. Menggambarkan skenario terburuk (`worst_case_summary`) dan terbaik (`best_case_summary`).
-3. Menilai kelayakan keseluruhan (`overall_viability` menjadi "viable", "risky", atau "not-viable").
-4. Memberikan daftar rekomendasi mitigasi tingkat tinggi (`recommendations`).
+1. Menyusun minimal 5 skenario risiko bisnis (`risk_scenarios`) yang realistis berdasarkan isu-isu dari Critic. Tiap skenario harus punya `scenario_name`, `probability` ("high", "medium", "low"), `impact` ("high", "medium", "low"), dan `mitigation`.
+2. Menggambarkan skenario terburuk (`worst_case_summary`) dan terbaik (`best_case_summary`) dari sudut pandang proyeksi.
+3. Menilai kelayakan keseluruhan rencana (`overall_viability`: "viable", "risky", atau "not-viable").
+4. Memberikan daftar rekomendasi mitigasi yang bisa ditindaklanjuti (`recommendations`).
+5. Menuliskan `reasoning`: 2-3 paragraf alur berpikir Anda secara naratif.
 
 Berikan output murni dalam format JSON yang mematuhi skema yang ditetapkan."""),
-            ("user", """Mohon lakukan analisis risiko berdasarkan laporan temuan kritis berikut ini:
+            ("user", """Mohon lakukan analisis risiko berdasarkan laporan temuan berikut:
 
 Laporan Critic:
 {critic_issues_str}
 
-Berdasarkan temuan di atas, buatlah minimal 5 skenario risiko (probability & impact), jabarkan kondisi worst-case dan best-case, lalu berikan keputusan `overall_viability` dan rekomendasi yang bisa ditindaklanjuti.
+Ingat: ini adalah proyeksi perencanaan, bukan laporan keuangan aktual. Buatlah minimal 5 skenario risiko, jabarkan kondisi worst-case dan best-case, berikan keputusan `overall_viability`, `recommendations`, dan `reasoning` naratif.
 """)
         ])
+
         
         chain = prompt | llm_with_tools
         

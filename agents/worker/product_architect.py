@@ -1,6 +1,7 @@
 import logging
 import json
 from core.factory import create_llm
+from core.llm_utils import invoke_with_retry, safe_parse_json
 # pyrefly: ignore [missing-import]
 from langchain_core.prompts import PromptTemplate
 # pyrefly: ignore [missing-import]
@@ -22,12 +23,13 @@ async def run(memory: SharedMemory) -> OpsOutput:
     memory.set_status(AgentKey.PRODUCT_ARCHITECT, AgentStatus.RUNNING)
     
     try:
-        # 2. Ambil data Growth Hacker dari memory
+        # 2. Ambil Proposal Terpilih dari memory
+        proposal = memory.get_selected_proposal()
         market_data = memory.get(AgentKey.GROWTH_HACKER, MarketOutput)
         
         # Validasi ketersediaan data dependency
-        if not market_data or market_data.status != AgentStatus.DONE:
-            error_msg = "Data dependency (Growth Hacker) tidak ditemukan atau belum selesai."
+        if not proposal and (not market_data or market_data.status != AgentStatus.DONE):
+            error_msg = "Data dependency (Proposal / Growth Hacker) tidak ditemukan atau belum selesai."
             logger.error(error_msg)
             output = OpsOutput(
                 status=AgentStatus.FAILED, 
@@ -50,10 +52,10 @@ async def run(memory: SharedMemory) -> OpsOutput:
             
 Tugas Anda adalah merumuskan daftar kebutuhan peralatan yang realistis, alur operasional bisnis sehari-hari, serta estimasi kapasitas dan SDM minimum.
 
-Konteks Strategi Bisnis (Dari Growth Hacker):
-- Ide Bisnis: {recommended_idea}
+Konteks Strategi Bisnis (Proposal Terpilih):
+- Konsep Bisnis: {recommended_idea}
 - Target Pasar: {target_segment}
-- Value Proposition: {value_proposition}
+- Value Proposition / Deskripsi: {value_proposition}
 
 Tugas Anda adalah merumuskan rencana operasional dan mengembalikannya HANYA dalam format JSON yang valid.
 Format JSON harus persis seperti ini tanpa tambahan teks apapun di luar JSON:
@@ -79,23 +81,26 @@ Panduan pengisian nilai JSON:
         logger.info("Mengirim prompt ke LLM untuk merumuskan operasi & peralatan...")
         
         chain = prompt | llm
-        response = await chain.ainvoke({
-            "recommended_idea": market_data.recommended_idea,
-            "target_segment": market_data.target_segment,
-            "value_proposition": market_data.value_proposition
-        })
         
-        # 4. Parsing JSON dari output LLM
-        logger.info("Memparsing respons JSON dari LLM...")
+        rec_idea = proposal.title if proposal else market_data.recommended_idea
+        tgt_seg = proposal.target_market if proposal else market_data.target_segment
+        vp = proposal.description if proposal else market_data.value_proposition
         
-        content = response.content.strip()
-        # Membersihkan backticks jika LLM mereturn markdown JSON
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-        elif content.startswith("```"):
-            content = content[3:-3].strip()
-            
-        json_data = json.loads(content)
+        formatted = prompt.format(
+            recommended_idea=rec_idea,
+            target_segment=tgt_seg,
+            value_proposition=vp,
+        )
+
+        # Retry otomatis jika LLM mengembalikan respons kosong
+        content = await invoke_with_retry(llm, formatted, max_retries=3, agent_name="product_architect")
+
+        if not content:
+            raise json.JSONDecodeError("LLM returned empty after retries", "", 0)
+
+        json_data = safe_parse_json(content, agent_name="product_architect")
+        if json_data is None:
+            raise json.JSONDecodeError("safe_parse_json failed", content, 0)
         
         # 5. Validasi Pydantic, Buat Output dan Simpan ke Memory
         output = OpsOutput(**json_data)

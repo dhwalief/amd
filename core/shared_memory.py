@@ -41,67 +41,15 @@ import redis
 # pyrefly: ignore [missing-import]
 from pydantic import BaseModel
 
-from core.schemas import AgentStatus, AgentOutput
+from core.schemas import AgentStatus, AgentOutput, AgentKey, SessionPhase
+from core.dag import DAG
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=AgentOutput)
 
 
-# ─────────────────────────────────────────────
-# KEY MAP — satu key per agent, jangan karang sendiri
-# ─────────────────────────────────────────────
 
-class AgentKey(str, Enum):
-    """
-    Kunci resmi untuk setiap agent di shared memory.
-    Semua developer wajib pakai enum ini — jangan hardcode string.
-    
-    SALAH  : memory.get("market")
-    BENAR  : memory.get(AgentKey.MARKET, MarketOutput)
-    """
-    INQUISITOR        = "inquisitor"
-    GEO_ANALYST       = "geo_analyst"
-    COMPETITOR        = "competitor_scout"
-    GROWTH_HACKER     = "growth_hacker"
-    PRICING           = "pricing_strategist"
-    CFO               = "cfo"
-    LEGAL             = "legal_compliance"
-    PRODUCT_ARCHITECT = "product_architect"
-    HR_PLANNER        = "hr_planner"
-    SUPPLY_PLANNER    = "supply_planner"
-    SOP_DESIGNER      = "sop_designer"
-    CRITIC            = "critic"
-    RISK_MANAGER      = "risk_manager"
-    ORCHESTRATOR      = "orchestrator"
-
-
-# ─────────────────────────────────────────────
-# DEPENDENCY GRAPH — Python code, bukan LLM
-# ─────────────────────────────────────────────
-
-DAG: dict[AgentKey, list[AgentKey]] = {
-    AgentKey.INQUISITOR:        [],
-    AgentKey.GEO_ANALYST:       [AgentKey.INQUISITOR],
-    AgentKey.COMPETITOR:        [AgentKey.INQUISITOR],
-    AgentKey.GROWTH_HACKER:     [AgentKey.GEO_ANALYST, AgentKey.COMPETITOR],
-    AgentKey.PRICING:           [AgentKey.GEO_ANALYST, AgentKey.COMPETITOR],
-    AgentKey.CFO:               [AgentKey.GROWTH_HACKER, AgentKey.PRICING],
-    AgentKey.LEGAL:             [AgentKey.CFO, AgentKey.PRICING],
-    AgentKey.PRODUCT_ARCHITECT: [AgentKey.GROWTH_HACKER],
-    AgentKey.HR_PLANNER:        [AgentKey.CFO],
-    AgentKey.SUPPLY_PLANNER:    [AgentKey.CFO],
-    AgentKey.SOP_DESIGNER:      [AgentKey.PRODUCT_ARCHITECT,
-                                  AgentKey.HR_PLANNER,
-                                  AgentKey.SUPPLY_PLANNER],
-    AgentKey.CRITIC:            [AgentKey.GEO_ANALYST, AgentKey.COMPETITOR,
-                                  AgentKey.GROWTH_HACKER, AgentKey.PRICING,
-                                  AgentKey.CFO, AgentKey.LEGAL,
-                                  AgentKey.PRODUCT_ARCHITECT, AgentKey.HR_PLANNER,
-                                  AgentKey.SUPPLY_PLANNER, AgentKey.SOP_DESIGNER],
-    AgentKey.RISK_MANAGER:      [AgentKey.CRITIC],
-    AgentKey.ORCHESTRATOR:      [AgentKey.CRITIC, AgentKey.RISK_MANAGER],
-}
 
 
 # ─────────────────────────────────────────────
@@ -304,10 +252,76 @@ class SharedMemory:
             self.redis.delete(*keys)
         logger.info(f"Session {self.session_id} direset.")
 
+    # ── BUSINESS CO-PILOT (NEW) ───────────────
+
+    def set_phase(self, phase: SessionPhase) -> None:
+        self.redis.set(f"{self.session_id}:phase", phase.value)
+        logger.info(f"[{self.session_id}] Phase → {phase.value}")
+
+    def get_phase(self) -> Optional[SessionPhase]:
+        raw = self.redis.get(f"{self.session_id}:phase")
+        if raw:
+            try:
+                return SessionPhase(raw)
+            except ValueError:
+                return None
+        return None
+
+    def set_user_prefs(self, prefs: dict) -> None:
+        self.redis.set(f"{self.session_id}:user_prefs", json.dumps(prefs))
+        logger.info(f"[{self.session_id}] User Prefs diperbarui")
+
+    def get_user_prefs(self) -> dict:
+        raw = self.redis.get(f"{self.session_id}:user_prefs")
+        if raw:
+            return json.loads(raw)
+        return {}
+
+    def invalidate_agents(self, keys: list[AgentKey]) -> None:
+        """
+        Partial Re-run: Mengubah status agen dari DONE kembali menjadi PENDING,
+        serta menghapus outputnya dari Redis.
+        """
+        for key in keys:
+            self.redis.delete(self._key(key))
+            self.redis.set(self._status_key(key), AgentStatus.PENDING.value)
+            logger.info(f"[{self.session_id}] {key.value} → INVALIDATED (PENDING)")
+
+    def get_selected_proposal(self):
+        """
+        Membaca opsi proposal terpilih (jika ada) dari USER_REVIEW_1.
+        Mengembalikan object ProposalOption atau None.
+        (Menghindari Circular Import, import langsung schemas di dalam)
+        """
+        from core.schemas import UserFeedbackOutput, ProposalGeneratorOutput, ProposalOption
+        
+        user_fb = self.get(AgentKey.USER_REVIEW_1, UserFeedbackOutput)
+        if not user_fb or not user_fb.approved or not user_fb.selected_option:
+            return None
+            
+        proposal_out = self.get(AgentKey.PROPOSAL_GENERATOR, ProposalGeneratorOutput)
+        if not proposal_out or not proposal_out.options:
+            return None
+            
+        selected_id = user_fb.selected_option
+        for opt in proposal_out.options:
+            if opt.id == selected_id:
+                return opt
+        return None
+
+    def get_language(self) -> str:
+        """Membaca preferensi bahasa. Return 'id' atau 'en'. Default 'id'."""
+        from core.schemas import InquisitorOutput
+        inq = self.get(AgentKey.INQUISITOR, InquisitorOutput)
+        if inq and inq.business_context:
+            return getattr(inq.business_context, "preferred_language", "id")
+        return "id"
+
 
 # ─────────────────────────────────────────────
 # MOCK — untuk development tanpa Redis
 # ─────────────────────────────────────────────
+
 
 class MockSharedMemory(SharedMemory):
     """
@@ -363,3 +377,41 @@ class MockSharedMemory(SharedMemory):
     def reset(self) -> None:
         self._store.clear()
         logger.info(f"MockSharedMemory session {self.session_id} direset.")
+
+    def set_phase(self, phase: SessionPhase) -> None:
+        self._store[f"{self.session_id}:phase"] = phase.value
+
+    def get_phase(self) -> Optional[SessionPhase]:
+        raw = self._store.get(f"{self.session_id}:phase")
+        return SessionPhase(raw) if raw else None
+
+    def set_user_prefs(self, prefs: dict) -> None:
+        self._store[f"{self.session_id}:user_prefs"] = json.dumps(prefs)
+
+    def get_user_prefs(self) -> dict:
+        raw = self._store.get(f"{self.session_id}:user_prefs")
+        return json.loads(raw) if raw else {}
+
+    def invalidate_agents(self, keys: list[AgentKey]) -> None:
+        for key in keys:
+            self._store.pop(self._key(key), None)
+            self._store[self._status_key(key)] = AgentStatus.PENDING.value
+
+    def get_selected_proposal(self):
+        from core.schemas import UserFeedbackOutput, ProposalGeneratorOutput, ProposalOption
+        
+        user_fb = self.get(AgentKey.USER_REVIEW_1, UserFeedbackOutput)
+        if not user_fb or not user_fb.approved or not user_fb.selected_option:
+            return None
+            
+        proposal_out = self.get(AgentKey.PROPOSAL_GENERATOR, ProposalGeneratorOutput)
+        if not proposal_out or not proposal_out.options:
+            return None
+            
+        selected_id = user_fb.selected_option
+        for opt in proposal_out.options:
+            if opt.id == selected_id:
+                return opt
+        return None
+
+

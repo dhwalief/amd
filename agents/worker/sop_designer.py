@@ -63,12 +63,18 @@ async def run(memory: SharedMemory) -> SOPOutput:
                 raw_materials_str = json.dumps([{"item": rm.get("item", ""), "unit": rm.get("unit", "")} for rm in supply_data.raw_materials], indent=2)
             except Exception:
                 pass
+        # Ambil Proposal Terpilih
+        proposal = memory.get_selected_proposal()
+        business_title = proposal.title if proposal else "Sistem Perencanaan Bisnis"
+        business_concept = proposal.description if proposal else "Standar Umum"
         
         # 3. Buat System Prompt
         prompt = PromptTemplate.from_template(
-            """Anda adalah SOP Designer (Perancang Standar Operasional Prosedur) untuk sistem perencanaan bisnis 'Go to America'.
+            """Anda adalah SOP Designer (Perancang Standar Operasional Prosedur) profesional.
             
-Tugas Anda adalah membuat SOP harian yang sangat terstruktur, standar kualitas, dan checklist tugas harian berdasarkan informasi alur kerja, peran staf, dan daftar bahan baku.
+Tugas Anda adalah membuat SOP harian yang sangat terstruktur, standar kualitas, dan checklist tugas harian untuk bisnis berikut:
+- Konsep Bisnis: {business_title}
+- Detail: {business_concept}
 
 Konteks Operasional (Dari Product Architect):
 - Alur Operasional: {operational_flow}
@@ -112,6 +118,8 @@ Panduan pengisian nilai JSON:
         
         chain = prompt | llm
         response = await chain.ainvoke({
+            "business_title": business_title,
+            "business_concept": business_concept,
             "operational_flow": operational_flow_str,
             "roles": roles_str,
             "raw_materials": raw_materials_str

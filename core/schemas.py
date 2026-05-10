@@ -31,6 +31,47 @@ class AgentStatus(str, Enum):
 
 
 # ─────────────────────────────────────────────
+# AGENT KEY ENUM — Identitas unik per agent
+# ─────────────────────────────────────────────
+
+class AgentKey(str, Enum):
+    INQUISITOR        = "inquisitor"
+    GEO_ANALYST       = "geo_analyst"
+    COMPETITOR        = "competitor_scout"
+    GROWTH_HACKER     = "growth_hacker"
+    PRICING           = "pricing_strategist"
+    CFO               = "cfo"
+    LEGAL             = "legal_compliance"
+    PRODUCT_ARCHITECT = "product_architect"
+    HR_PLANNER        = "hr_planner"
+    SUPPLY_PLANNER    = "supply_planner"
+    SOP_DESIGNER      = "sop_designer"
+    CRITIC            = "critic"
+    RISK_MANAGER      = "risk_manager"
+    ORCHESTRATOR      = "orchestrator"
+    
+    # Virtual nodes & Co-pilot specific
+    PROPOSAL_GENERATOR = "proposal_generator"  # Fase 3
+    USER_REVIEW_1      = "user_review_1"       # Fase 4
+    USER_REVIEW_2      = "user_review_2"       # Fase 7
+
+
+# ─────────────────────────────────────────────
+# SESSION PHASE ENUM — untuk tracking Business Co-Pilot
+# ─────────────────────────────────────────────
+
+class SessionPhase(str, Enum):
+    DISCOVERY   = "discovery"     # Fase 1
+    RESEARCH    = "research"      # Fase 2
+    PROPOSAL    = "proposal"      # Fase 3
+    REVIEW_1    = "review_1"      # Fase 4
+    PLANNING    = "planning"      # Fase 5
+    VALIDATION  = "validation"    # Fase 6
+    REVIEW_2    = "review_2"      # Fase 7
+    FINAL       = "final"         # Selesai
+
+
+# ─────────────────────────────────────────────
 # BASE — semua output agent inherit dari sini
 # ─────────────────────────────────────────────
 
@@ -56,6 +97,8 @@ class BusinessContext(BaseModel):
     business_idea: Optional[str] = None  # kalau user sudah punya ide
     preferred_sector: Optional[str] = None  # "F&B", "jasa", "retail", dll
     target_monthly_income: Optional[float] = None  # target pendapatan bersih/bulan
+    preferred_language: str = "id"       # "id" = Bahasa Indonesia, "en" = English
+
 
 
 class InquisitorOutput(AgentOutput):
@@ -112,6 +155,24 @@ class PricingOutput(AgentOutput):
     pricing_strategy: str                # "penetration" | "skimming" | "value-based"
     margin_percentage: float             # target margin (%)
     justification: str                   # alasan pricing
+
+
+# ─────────────────────────────────────────────
+# LAYER 2.5 — EXECUTIVE PROPOSAL (Fase 3)
+# ─────────────────────────────────────────────
+
+class ProposalOption(BaseModel):
+    id: str                              # "opt_1", "opt_2"
+    title: str                           # "Kedai Kopi Minimalis"
+    description: str                     # Konsep bisnis secara umum
+    target_market: str                   # Target demografis spesifik
+    pros: list[str]                      # Kelebihan opsi ini
+    cons: list[str]                      # Risiko / kelemahan opsi ini
+    estimated_startup_cost_range: str    # Estimasi kasar modal, misal: "30M - 45M"
+
+class ProposalGeneratorOutput(AgentOutput):
+    agent_name: str = "proposal_generator"
+    options: list[ProposalOption]
 
 
 # ─────────────────────────────────────────────
@@ -202,6 +263,8 @@ class CriticOutput(AgentOutput):
     revision_required: bool
     critical_count: int                  # jumlah issue severity=critical
     summary: str                         # ringkasan hasil review
+    reasoning: Optional[str] = None      # alur pemikiran analisis
+
 
 
 class RiskScenario(BaseModel):
@@ -218,6 +281,8 @@ class RiskManagerOutput(AgentOutput):
     best_case_summary: str
     overall_viability: str               # "viable" | "risky" | "not-viable"
     recommendations: list[str]
+    reasoning: Optional[str] = None      # alur pemikiran analisis
+
 
 
 class OrchestratorReview(AgentOutput):
@@ -226,6 +291,8 @@ class OrchestratorReview(AgentOutput):
     final_recommendation: str
     executive_summary: str
     next_steps: list[str]
+    reasoning: Optional[str] = None      # alur pemikiran keputusan akhir
+
 
 
 # ─────────────────────────────────────────────
@@ -243,3 +310,19 @@ class SupplyPlanOutput(AgentOutput):
     monthly_cogs: float
     hpp_per_unit: float                  # Harga Pokok Produksi per unit
     supplier_recommendations: list[str]
+
+
+# ─────────────────────────────────────────────
+# USER INTERACTION — Virtual Node Output
+# ─────────────────────────────────────────────
+
+class UserFeedbackOutput(AgentOutput):
+    """
+    Output yang dihasilkan saat User menyetujui atau mengubah opsi (virtual agent).
+    Disimpan ke Redis sebagai tanda bahwa USER_REVIEW telah DONE.
+    """
+    agent_name: str = "user"
+    approved: bool
+    selected_option: Optional[str] = None
+    feedback_notes: Optional[str] = None
+    triggered_reruns: Optional[list[str]] = None  # agen apa saja yang di-rerun

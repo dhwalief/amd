@@ -43,12 +43,21 @@ class DependencyEngine:
                     tasks[key] = asyncio.create_task(run_func(self.memory))
             
             if not tasks:
-                # Jika tidak ada tasks yang berjalan, proses selesai.
-                # Cek jika ada agen di registry yang tidak tereksekusi
+                # Jika tidak ada tasks yang berjalan, cek status antrean
+                ready_agents = self.memory.get_ready_agents()
+                virtual_nodes = [k for k in ready_agents if k not in self.registry]
+                
                 unexecuted = set(self.registry.keys()) - set(results.keys())
-                if unexecuted:
+                
+                if virtual_nodes:
+                    logger.info(f"Engine paused at virtual nodes: {[v.value for v in virtual_nodes]}. Menunggu eksekusi manual / intervensi user.")
+                    break
+                elif unexecuted:
                     logger.warning(f"Engine selesai tetapi ada agen yang stuck (tidak terpenuhi dependensinya): {unexecuted}")
-                break
+                    break
+                else:
+                    logger.info("Engine selesai: semua task tereksekusi.")
+                    break
                 
             # Tunggu setidaknya satu task selesai
             done, pending = await asyncio.wait(

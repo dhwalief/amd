@@ -22,16 +22,18 @@ async def run(memory: SharedMemory) -> FinanceOutput:
     memory.set_status(AgentKey.CFO, AgentStatus.RUNNING)
     
     try:
-        # 2. Ambil data Growth Hacker dan Pricing Strategist dari memory
-        market_data = memory.get(AgentKey.GROWTH_HACKER, MarketOutput)
+        # 2. Ambil Proposal Terpilih (Source of Truth) dan Pricing dari memory
+        proposal = memory.get_selected_proposal()
         pricing_data = memory.get(AgentKey.PRICING, PricingOutput)
+        market_data = memory.get(AgentKey.GROWTH_HACKER, MarketOutput) # Fallback
         
         # Validasi ketersediaan data dependency
         missing_deps = []
-        if not market_data or market_data.status != AgentStatus.DONE:
-            missing_deps.append("Growth Hacker")
+        if not proposal and (not market_data or market_data.status != AgentStatus.DONE):
+            missing_deps.append("Proposal / Growth Hacker")
         if not pricing_data or pricing_data.status != AgentStatus.DONE:
             missing_deps.append("Pricing Strategist")
+
             
         if missing_deps:
             error_msg = f"Data dependency tidak ditemukan atau belum selesai: {', '.join(missing_deps)}."
@@ -63,10 +65,10 @@ async def run(memory: SharedMemory) -> FinanceOutput:
             
 Tugas Anda adalah merumuskan proyeksi keuangan yang realistis, Break Even Point (BEP), dan kebutuhan modal awal berdasarkan strategi pasar dan penetapan harga.
 
-Konteks Bisnis (Dari Growth Hacker):
-- Ide Bisnis Terpilih: {recommended_idea}
+Konteks Bisnis Terpilih (Proposal Approved):
+- Ide/Konsep Bisnis: {recommended_idea}
 - Segmen Target: {target_segment}
-- Go-to-Market Strategy: {go_to_market}
+- Catatan Strategi: {go_to_market}
 
 Konteks Harga (Dari Pricing Strategist):
 - Harga Jual Rekomendasi: Rp {recommended_price:,.2f}
@@ -111,14 +113,21 @@ Panduan pengisian nilai JSON:
         logger.info("Mengirim prompt ke LLM untuk merumuskan proyeksi keuangan...")
         
         chain = prompt | llm
+        
+        # Fallback values
+        rec_idea = proposal.title if proposal else market_data.recommended_idea
+        tgt_seg = proposal.target_market if proposal else market_data.target_segment
+        gtm = proposal.description if proposal else market_data.go_to_market_strategy
+        
         response = await chain.ainvoke({
-            "recommended_idea": market_data.recommended_idea,
-            "target_segment": market_data.target_segment,
-            "go_to_market": market_data.go_to_market_strategy,
+            "recommended_idea": rec_idea,
+            "target_segment": tgt_seg,
+            "go_to_market": gtm,
             "recommended_price": pricing_data.recommended_price,
             "pricing_strategy": pricing_data.pricing_strategy,
             "margin_percentage": pricing_data.margin_percentage
         })
+
         
         # 4. Parsing JSON dari output LLM
         logger.info("Memparsing respons JSON dari LLM...")

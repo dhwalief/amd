@@ -36,13 +36,20 @@ async def run(memory: SharedMemory) -> Optional[HROutput]:
             memory.set_failed(AgentKey.HR_PLANNER, error_msg)
             return None
 
-        # Mengambil konteks bisnis (Inquisitor) agar LLM tahu bisnis apa yang butuh SDM
+        # Mengambil konteks bisnis dari Proposal Terpilih (Source of Truth)
+        proposal = memory.get_selected_proposal()
         inquisitor_data = memory.get(AgentKey.INQUISITOR, InquisitorOutput)
         business_idea = "Bisnis Umum"
         location = "Tidak ditentukan"
-        if inquisitor_data and inquisitor_data.business_context:
+        
+        if proposal:
+            business_idea = proposal.title
+        elif inquisitor_data and inquisitor_data.business_context:
             business_idea = inquisitor_data.business_context.business_idea or "Belum spesifik"
+            
+        if inquisitor_data and inquisitor_data.business_context:
             location = inquisitor_data.business_context.location
+
         
         # Ekstrak data untuk prompt
         budget_bulanan_total = cfo_data.total_monthly_cost
