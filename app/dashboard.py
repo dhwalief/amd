@@ -13,6 +13,7 @@ from datetime import datetime
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# Final version with PDF support
 import streamlit as st
 from core.shared_memory import MockSharedMemory, AgentKey
 from core.schemas import BusinessContext, InquisitorOutput, AgentStatus, AgentOutput, FinanceOutput
