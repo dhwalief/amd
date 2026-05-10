@@ -5,10 +5,20 @@ from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
-ARIAL_PATH = r"C:\Windows\Fonts\arial.ttf"
-ARIAL_BOLD_PATH = r"C:\Windows\Fonts\arialbd.ttf"
-ARIAL_ITALIC_PATH = r"C:\Windows\Fonts\ariali.ttf"
-
+def find_available_fonts():
+    """Finds common sans-serif font paths across different Operating Systems."""
+    import os
+    candidates = [
+        # Windows
+        {"name": "Arial", "path": r"C:\Windows\Fonts\arial.ttf", "bold": r"C:\Windows\Fonts\arialbd.ttf", "italic": r"C:\Windows\Fonts\ariali.ttf"},
+        # Linux (Common on Ubuntu/Debian/Streamlit Cloud)
+        {"name": "DejaVuSans", "path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "bold": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "italic": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf"},
+        {"name": "LiberationSans", "path": "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "bold": "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", "italic": "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf"},
+    ]
+    for c in candidates:
+        if os.path.exists(c["path"]):
+            return c
+    return None
 
 def generate_business_plan_pdf(memory) -> bytes:
     from fpdf import FPDF, XPos, YPos
@@ -39,15 +49,17 @@ def generate_business_plan_pdf(memory) -> bytes:
     is_en    = lang == "en"
     date_str = datetime.now().strftime("%d %B %Y")
 
-    # ── Check font availability ─────────────────────────────────────────────
-    use_unicode = os.path.exists(ARIAL_PATH)
+    # ── Font Setup (Cross-Platform) ──────────────────────────────────────────
+    font_info = find_available_fonts()
+    use_unicode = font_info is not None
+    font_family = font_info["name"] if use_unicode else "Helvetica"
 
     class PDF(FPDF):
         def header(self):
             self._set_font("B", 9)
             self.set_text_color(120, 120, 120)
-            self.cell(0, 8, f"{'BUSINESS PLAN' if is_en else 'RENCANA BISNIS'} — {self._s(biz_name)}",
-                      align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            title_text = f"{'BUSINESS PLAN' if is_en else 'RENCANA BISNIS'} - {self._s(biz_name)}"
+            self.cell(0, 8, self._s(title_text), align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             self.set_draw_color(200, 200, 200)
             self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
             self.ln(2)
@@ -56,36 +68,42 @@ def generate_business_plan_pdf(memory) -> bytes:
             self.set_y(-14)
             self._set_font("I", 8)
             self.set_text_color(150, 150, 150)
-            self.cell(0, 8, f"Business Co-Pilot AI | {date_str} | Page {self.page_no()}", align="C")
+            footer_text = f"Business Co-Pilot AI | {date_str} | Page {self.page_no()}"
+            self.cell(0, 8, self._s(footer_text), align="C")
 
         def _set_font(self, style="", size=10):
-            if use_unicode:
-                self.set_font("Arial", style, size)
-            else:
-                self.set_font("Helvetica", style, size)
+            self.set_font(font_family, style, size)
 
         def _s(self, text: str) -> str:
-            """Safe string — strip non-latin if not using unicode font."""
+            """Safe string — converts unicode characters to ascii equivalents for standard fonts."""
+            if not text: return ""
+            t = str(text)
+            # Pre-clean common problematic characters
+            replacements = {
+                "\u2014": "-", "\u2013": "-",  # em-dash, en-dash
+                "\u2018": "'", "\u2019": "'",  # curly single quotes
+                "\u201c": '"', "\u201d": '"',  # curly double quotes
+                "\u2022": "*",                 # bullet
+                "\u2713": "v", "\u2705": "v",  # checkmarks
+                "\u26a0": "!", "\u274c": "x",  # warning, cross
+                "\u2026": "...",               # ellipsis
+            }
+            for old, new in replacements.items():
+                t = t.replace(old, new)
+            
             if use_unicode:
-                return str(text or "")
-            out = []
-            for ch in str(text or ""):
-                if ord(ch) < 256:
-                    out.append(ch)
-                else:
-                    replacements = {
-                        "\u2014": "-", "\u2013": "-", "\u2018": "'", "\u2019": "'",
-                        "\u201c": '"', "\u201d": '"', "\u2022": "*", "\u2713": "v",
-                        "\u274c": "X", "\u26a0": "!", "\u2705": "v",
-                    }
-                    out.append(replacements.get(ch, ""))
-            return "".join(out)
+                return t
+                
+            # If not using unicode font, strip everything above ASCII
+            return "".join(c if ord(c) < 128 else "" for c in t)
 
     pdf = PDF()
     if use_unicode:
-        pdf.add_font("Arial", "", ARIAL_PATH)
-        pdf.add_font("Arial", "B", ARIAL_BOLD_PATH)
-        pdf.add_font("Arial", "I", ARIAL_ITALIC_PATH)
+        pdf.add_font(font_family, "", font_info["path"])
+        if os.path.exists(font_info.get("bold", "")):
+            pdf.add_font(font_family, "B", font_info["bold"])
+        if os.path.exists(font_info.get("italic", "")):
+            pdf.add_font(font_family, "I", font_info["italic"])
 
     pdf.set_auto_page_break(auto=True, margin=18)
     pdf.add_page()
