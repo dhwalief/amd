@@ -60,41 +60,38 @@ async def run(memory: SharedMemory) -> Optional[CriticOutput]:
         
         # Baca preferensi bahasa
         lang = memory.get_language()
-        lang_instruction = "Respond in English." if lang == "en" else "Jawab dalam Bahasa Indonesia."
-
+        is_en = lang == "en"
+        lang_name = "English" if is_en else "Bahasa Indonesia"
+        
         llm_with_tools = llm.with_structured_output(CriticOutput)
 
-        
         # 4. Setup Prompt
         prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""Anda adalah Executive Critic profesional (Gap Finder) untuk sistem **perencanaan bisnis**.
-{lang_instruction}
+            ("system", f"""You are a professional Executive Critic (Gap Finder) for a business planning system.
+OUTPUT LANGUAGE: You MUST respond entirely in {lang_name}.
 
-KONTEKS PENTING: Semua data yang Anda terima adalah PROYEKSI DAN RENCANA berbasis riset — angka-angka estimasi dihasilkan dari hasil pencarian web (harga pasar, tarif SDM, biaya peralatan, dan data kompetitor yang dikumpulkan secara real-time). Ini bukan laporan keuangan aktual, bukan data historis perusahaan, dan bukan laporan audit. Semua angka adalah ESTIMASI BERBASIS DATA PASAR untuk membantu user merencanakan bisnis sebelum benar-benar berdiri.
+IMPORTANT CONTEXT: All data provided are RESEARCH-BASED PROJECTIONS and PLANS. Estimated figures are derived from web search results (market prices, HR rates, equipment costs, etc.) collected in real-time. This is NOT an actual financial report or historical company data. You are evaluating a plan before it exists, so use terminology like "projections", "plans", "market-based estimates".
 
-ATURAN KRITIS:
-- ABAIKAN SEPENUHNYA data yang menunjukkan error teknis sistem (seperti "error parsing JSON", "agent gagal", "data tidak tersedia", dll). Itu adalah error sistem teknis yang bukan tanggung jawab user/bisnis.
-- HANYA laporkan isu yang relevan dengan PERENCANAAN BISNIS: inkonsistensi antar angka proyeksi, asumsi pasar yang tidak realistis, celah strategi, dll.
-- Jika data dari suatu agen tidak tersedia karena error teknis, CATAT sebagai keterbatasan data, bukan sebagai isu kritis bisnis.
+CRITICAL RULES:
+- COMPLETELY IGNORE technical system errors (e.g., "JSON parsing error", "agent failed", "data not available"). These are technical issues, not business planning issues.
+- ONLY report issues relevant to BUSINESS PLANNING: inconsistencies between projection numbers, unrealistic market assumptions, strategic gaps, etc.
+- If data from an agent is missing due to technical error, note it as a data limitation, not a critical business issue.
 
-Tugas Anda adalah meninjau konsistensi dan kewajaran estimasi dari seluruh agen spesialis:
-1. Angka yang tidak konsisten antar agen (misal: total gaji HR melebihi alokasi proyeksi CFO, atau HPP Supply Planner lebih tinggi dari harga jual Pricing).
-2. Asumsi yang tidak realistis dibandingkan konteks pasar riil yang ada.
-3. Celah operasional/bisnis dalam rencana yang belum tercakup.
+Your task is to review the consistency and reasonableness of estimates from all specialized agents:
+1. Inconsistent numbers between agents (e.g., total HR salaries exceed CFO's projected allocation, or Supply Planner's COGS is higher than Pricing's selling price).
+2. Unrealistic assumptions compared to real market contexts.
+3. Operational or business gaps in the plan that haven't been covered.
 
-Gunakan bahasa "rencana", "proyeksi", "estimasi", "berdasarkan riset pasar" — BUKAN "laporan keuangan" atau "data historis".
-Keluarkan dalam format JSON. Array `issues_found` berisi severity ("critical", "warning", "info"), agent_source, description, dan suggestion yang detail.
-Tambahkan field `reasoning` berisi 2-3 paragraf alur berpikir Anda secara naratif sebelum menyimpulkan."""),
-            ("user", """Mohon lakukan tinjauan kritis terhadap keseluruhan **proyeksi rencana bisnis** dari agen-agen berikut:
+Use terms like "plan", "projection", "estimate", "based on market research" — NOT "financial statements" or "historical data".
+Output MUST be in JSON format. The `issues_found` array should contain severity ("critical", "warning", "info"), agent_source, description, and suggestion.
+Include a `reasoning` field with 2-3 paragraphs of your narrative thought process in {lang_name} before concluding."""),
+            ("user", f"""Please perform a critical review of the following **business plan projections** from the analyst team.
+            
+REMEMBER: You must respond in {lang_name}.
 
 {context_string}
 
-Ingat:
-- Ini adalah proyeksi perencanaan berbasis riset pasar, bukan laporan keuangan aktual.
-- ABAIKAN error teknis sistem (parsing, agent gagal, dll) — itu bukan isu bisnis.
-- Fokus HANYA pada inkonsistensi antar angka proyeksi dan kewajaran asumsi bisnis.
-- Identifikasi isu, nilai `overall_risk_level` ("high"/"medium"/"low"), putuskan `revision_required`, dan tulis `summary` + `reasoning` naratif.
-""")
+Focus ONLY on projection inconsistencies and business assumption reasonableness.""")
         ])
 
         chain = prompt | llm_with_tools

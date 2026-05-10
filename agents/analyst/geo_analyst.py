@@ -42,41 +42,48 @@ async def run(memory: SharedMemory) -> GeoAnalystOutput:
             
         context = inquisitor_data.business_context
         
+        # Baca preferensi bahasa
+        lang = memory.get_language()
+        is_en = lang == "en"
+        lang_name = "English" if is_en else "Bahasa Indonesia"
+        
         # Inisialisasi LLM via Factory
         llm = create_llm("analyst_pool", temperature=0.4, timeout=120)
         
         # 3. Buat System Prompt
         prompt = PromptTemplate.from_template(
-            """Anda adalah Geo Analyst, analis spasial dan demografi untuk sistem perencanaan bisnis 'Go to America'.
-            
-Konteks Bisnis:
-- Lokasi Target: {location}
-- Ide Bisnis / Sektor: {business_idea} / {preferred_sector}
-- Budget: Rp {budget:,.2f}
+            f"""You are a Geo Analyst, spatial and demographic analyst for the 'Business Co-Pilot' system.
+OUTPUT LANGUAGE: You MUST respond entirely in {lang_name}.
 
-Tugas Anda adalah mengekstrak analisis geografi dan demografi untuk lokasi tersebut dan mengembalikannya HANYA dalam format JSON yang valid.
-Format JSON harus persis seperti ini tanpa tambahan teks apapun di luar JSON:
+Business Context:
+- Target Location: {{location}}
+- Business Idea / Sector: {{business_idea}} / {{preferred_sector}}
+- Budget: Rp {{budget:,.2f}}
+
+Your task is to extract geography and demographic analysis for the location and return it ONLY in valid JSON format.
+JSON Schema:
 {{
     "location_score": 0.0,
     "demand_level": "high",
-    "foot_traffic_estimate": "...",
-    "nearby_anchor": ["..."],
-    "risk_factors": ["..."],
-    "recommendation": "..."
+    "foot_traffic_estimate": "description in {lang_name}",
+    "nearby_anchor": ["place 1", "place 2"],
+    "risk_factors": ["risk 1", "risk 2"],
+    "recommendation": "summary paragraph in {lang_name}"
 }}
 
-Panduan pengisian nilai JSON:
-- location_score: angka float antara 0.0 hingga 1.0 (misal: 0.85)
-- demand_level: harus salah satu dari: "high", "medium", atau "low"
-- foot_traffic_estimate: kalimat singkat mengestimasi kepadatan lalu lalang manusia di lokasi tersebut
-- nearby_anchor: array of string berisi daya tarik sekitar (misal: ["Kampus", "Perkantoran", "Stasiun"])
-- risk_factors: array of string berisi potensi risiko lokasi (misal: ["Rawan macet", "Banyak kompetitor sejenis"])
-- recommendation: kalimat singkat rekomendasi kelayakan lokasi
+Instructions for JSON values:
+- Use {lang_name} for all text content.
+- location_score: float between 0.0 and 1.0.
+- demand_level: "high", "medium", or "low".
+- foot_traffic_estimate: brief sentence estimating foot traffic density.
+- nearby_anchor: array of strings containing surrounding points of interest.
+- risk_factors: array of strings containing potential location risks.
+- recommendation: brief sentence on location viability.
 """
         )
         
-        business_idea_text = context.business_idea if context.business_idea else "Belum spesifik"
-        preferred_sector_text = context.preferred_sector if context.preferred_sector else "Belum spesifik"
+        business_idea_text = context.business_idea if context.business_idea else ("Not specified" if is_en else "Belum spesifik")
+        preferred_sector_text = context.preferred_sector if context.preferred_sector else ("Not specified" if is_en else "Belum spesifik")
         
         logger.info(f"Mengirim prompt ke LLM untuk menganalisis lokasi: {context.location}...")
         
@@ -92,7 +99,6 @@ Panduan pengisian nilai JSON:
         logger.info("Memparsing respons JSON dari LLM...")
         
         content = response.content.strip()
-        # Membersihkan backticks jika LLM mereturn markdown JSON
         if content.startswith("```json"):
             content = content[7:-3].strip()
         elif content.startswith("```"):
@@ -107,56 +113,6 @@ Panduan pengisian nilai JSON:
         logger.info("Eksekusi Geo Analyst agent selesai dengan sukses.")
         return output
 
-    except ValidationError as e:
-        error_msg = f"Validasi output JSON gagal: {str(e)}"
-        logger.error(error_msg)
-        
-        output = GeoAnalystOutput(
-            status=AgentStatus.FAILED, 
-            error_message=error_msg,
-            location_score=0.0,
-            demand_level="low",
-            foot_traffic_estimate="",
-            nearby_anchor=[],
-            risk_factors=[],
-            recommendation=""
-        )
-        memory.set_failed(AgentKey.GEO_ANALYST, error_msg)
-        return output
-        
-    except json.JSONDecodeError as e:
-        error_msg = f"Gagal parsing respons JSON dari LLM: {str(e)}"
-        logger.error(error_msg)
-        
-        output = GeoAnalystOutput(
-            status=AgentStatus.FAILED, 
-            error_message=error_msg,
-            location_score=0.0,
-            demand_level="low",
-            foot_traffic_estimate="",
-            nearby_anchor=[],
-            risk_factors=[],
-            recommendation=""
-        )
-        memory.set_failed(AgentKey.GEO_ANALYST, error_msg)
-        return output
-        
-    except Exception as e:
-        error_msg = f"Eksekusi gagal: {str(e)}"
-        logger.error(error_msg)
-        
-        output = GeoAnalystOutput(
-            status=AgentStatus.FAILED, 
-            error_message=error_msg,
-            location_score=0.0,
-            demand_level="low",
-            foot_traffic_estimate="",
-            nearby_anchor=[],
-            risk_factors=[],
-            recommendation=""
-        )
-        memory.set_failed(AgentKey.GEO_ANALYST, error_msg)
-        return output
     except Exception as e:
         error_msg = f"Eksekusi gagal: {str(e)}"
         logger.error(error_msg)

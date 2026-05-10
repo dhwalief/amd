@@ -47,71 +47,83 @@ async def run(memory: SharedMemory, **kwargs) -> ProposalGeneratorOutput:
                 error_message="Data dari Analyst Layer belum lengkap."
             )
 
-        # 3. Siapkan LLM (Orchestrator class)
+        # 3. Siapkan bahasa dan mata uang
+        lang = inq_data.business_context.preferred_language or "id"
+        is_en = lang == "en"
+        currency_symbol = "$" if is_en else "Rp"
+        exchange_rate = 16000.0 if is_en else 1.0
+        
+        # 4. Siapkan LLM (Orchestrator class)
         llm = create_llm("orchestrator", temperature=0.5)
         
-        # 4. Siapkan Prompt
+        # 5. Siapkan Prompt
         prompt = PromptTemplate(
-            template='''Anda adalah Chief Strategy Officer dari sistem Business Co-Pilot.
-Tugas Anda adalah merumuskan 2 hingga 3 OPSI PROPOSAL BISNIS yang berbeda berdasarkan data riset lapangan berikut.
+            template='''You are the Chief Strategy Officer of the Business Co-Pilot system.
+Your task is to formulate 2 to 3 DIFFERENT BUSINESS PROPOSAL OPTIONS based on the following research data.
 
-# KONTEKS BISNIS
-Lokasi: {location}
-Modal Awal Tersedia: Rp {budget:,.0f}
-Keahlian: {skills}
-Aset Tersedia: {assets}
-Ide Awal User: {ide}
+# LANGUAGE INSTRUCTION
+- You MUST respond in {language_name}.
+- All text fields (title, description, target_market, pros, cons) must be in {language_name}.
 
-# DATA RISET
-1. Lokasi (Geo Analyst): {geo_recommendation} (Potensi: {geo_score})
-2. Kompetisi (Competitor Scout): Ada {comp_count} kompetitor utama. Rata-rata harga pasar: Rp {avg_price:,.0f}. Gap: {market_gap}
-3. Growth & Marketing (Growth Hacker): Rekomendasi Utama: {growth_idea}. Strategi GTM: {gtm}. Channel: {channels}
-4. Pricing (Pricing Strategist): Harga Rekomendasi: Rp {pricing_rec:,.0f}. Margin: {margin}%. Strategi: {pricing_strategy}
+# BUSINESS CONTEXT
+Location: {location}
+Initial Capital: {currency_symbol} {budget:,.0f}
+Skills: {skills}
+Assets: {assets}
+User Idea: {ide}
 
-# INSTRUKSI
-Buat 2 atau 3 opsi bisnis yang masuk akal dan berbeda satu sama lain (misalnya: Opsi 1 fokus premium/kualitas, Opsi 2 fokus mass-market/murah, Opsi 3 fokus organik/lean-startup).
-Opsi harus realistis dengan modal awal yang tersedia.
+# RESEARCH DATA
+1. Location (Geo Analyst): {geo_recommendation}
+2. Competition (Competitor Scout): {comp_count} main competitors. Avg market price: {currency_symbol} {avg_price:,.0f}. Gap: {market_gap}
+3. Growth & Marketing (Growth Hacker): Recommendation: {growth_idea}. GTM Strategy: {gtm}. Channels: {channels}
+4. Pricing (Pricing Strategist): Recommended Price: {currency_symbol} {pricing_rec:,.0f}. Margin: {margin}%. Strategy: {pricing_strategy}
 
-Keluarkan HANYA dalam format JSON dengan skema berikut:
+# INSTRUCTIONS
+Create 2 or 3 sensible and distinct business options (e.g., Option 1: Premium/Quality, Option 2: Mass-market/Low-cost, Option 3: Organic/Lean-startup).
+Options must be realistic according to the initial capital.
+
+OUTPUT ONLY in JSON format with the following schema:
 {{
     "options": [
         {{
             "id": "opt_1",
-            "title": "Nama Opsi 1",
-            "description": "Deskripsi konsep...",
-            "target_market": "Target pasar...",
-            "pros": ["Kelebihan 1", "Kelebihan 2"],
-            "cons": ["Kekurangan 1", "Kekurangan 2"],
-            "estimated_startup_cost_range": "Rp 20 Juta - Rp 30 Juta"
+            "title": "Option Title",
+            "description": "Concept description...",
+            "target_market": "Target market segment...",
+            "pros": ["Advantage 1", "Advantage 2"],
+            "cons": ["Disadvantage 1", "Disadvantage 2"],
+            "estimated_startup_cost_range": "{currency_symbol} 1,000 - {currency_symbol} 2,000"
         }}
     ]
 }}
-Pastikan output adalah valid JSON. Jangan gunakan block markdown (```json) jika tidak perlu, pastikan bisa langsung di-parse.
+Ensure the output is valid JSON. Use the selected language ({language_name}) for all content.
 ''',
             input_variables=[
-                "location", "budget", "skills", "assets", "ide",
-                "geo_recommendation", "geo_score", "comp_count", "avg_price", "market_gap",
-                "growth_idea", "gtm", "channels", "pricing_rec", "margin", "pricing_strategy"
+                "language_name", "location", "budget", "skills", "assets", "ide",
+                "geo_recommendation", "comp_count", "avg_price", "market_gap",
+                "growth_idea", "gtm", "channels", "pricing_rec", "margin", "pricing_strategy",
+                "currency_symbol"
             ]
         )
 
         formatted_prompt = prompt.format(
+            language_name="English" if is_en else "Bahasa Indonesia",
             location=inq_data.business_context.location,
-            budget=inq_data.business_context.budget,
+            budget=inq_data.business_context.budget / exchange_rate,
             skills=", ".join(inq_data.business_context.skills),
             assets=", ".join(inq_data.business_context.existing_assets),
-            ide=inq_data.business_context.business_idea or "Belum ada ide pasti",
+            ide=inq_data.business_context.business_idea or ("No specific idea" if is_en else "Belum ada ide pasti"),
             geo_recommendation=geo_data.recommendation,
-            geo_score=geo_data.location_score,
             comp_count=len(comp_data.competitors),
-            avg_price=comp_data.average_market_price,
+            avg_price=comp_data.average_market_price / exchange_rate,
             market_gap=", ".join(comp_data.market_gap),
             growth_idea=growth_data.recommended_idea,
             gtm=growth_data.go_to_market_strategy,
             channels=", ".join(growth_data.marketing_channels),
-            pricing_rec=pricing_data.recommended_price,
+            pricing_rec=pricing_data.recommended_price / exchange_rate,
             margin=pricing_data.margin_percentage,
-            pricing_strategy=pricing_data.pricing_strategy
+            pricing_strategy=pricing_data.pricing_strategy,
+            currency_symbol=currency_symbol
         )
 
         # 5. Invoke LLM

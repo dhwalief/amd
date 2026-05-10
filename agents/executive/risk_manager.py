@@ -42,34 +42,36 @@ async def run(memory: SharedMemory) -> Optional[RiskManagerOutput]:
 
         # Baca preferensi bahasa
         lang = memory.get_language()
-        lang_instruction = "Respond in English." if lang == "en" else "Jawab dalam Bahasa Indonesia."
-
+        is_en = lang == "en"
+        lang_name = "English" if is_en else "Bahasa Indonesia"
+        
         llm_with_tools = llm.with_structured_output(RiskManagerOutput)
 
-        
         # 4. Setup Prompt
         prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""Anda adalah Chief Risk Officer (Risk Manager) profesional.
-{lang_instruction}
-Tugas Anda adalah meninjau temuan dari Executive Critic dan merumuskan manajemen risiko untuk **rencana bisnis** ini.
+            ("system", f"""You are a professional Chief Risk Officer (Risk Manager).
+OUTPUT LANGUAGE: You MUST respond entirely in {lang_name}.
 
-KONTEKS PENTING: Semua data yang Anda terima adalah PROYEKSI DAN RENCANA berbasis riset pasar — angka-angka estimasi berasal dari hasil pencarian web (harga pasar, tarif SDM, data kompetitor, dll) yang dikumpulkan secara real-time oleh agen analis. Ini bukan laporan keuangan aktual. Anda sedang menilai risiko dari sebuah rencana yang belum terealisasi, sehingga gunakan bahasa "proyeksi", "rencana", "estimasi berdasarkan riset".
+Your task is to review the findings from the Executive Critic and formulate risk management for this **business plan**.
 
-Anda diwajibkan untuk:
-1. Menyusun minimal 5 skenario risiko bisnis (`risk_scenarios`) yang realistis berdasarkan isu-isu dari Critic. Tiap skenario harus punya `scenario_name`, `probability` ("high", "medium", "low"), `impact` ("high", "medium", "low"), dan `mitigation`.
-2. Menggambarkan skenario terburuk (`worst_case_summary`) dan terbaik (`best_case_summary`) dari sudut pandang proyeksi.
-3. Menilai kelayakan keseluruhan rencana (`overall_viability`: "viable", "risky", atau "not-viable").
-4. Memberikan daftar rekomendasi mitigasi yang bisa ditindaklanjuti (`recommendations`).
-5. Menuliskan `reasoning`: 2-3 paragraf alur berpikir Anda secara naratif.
+IMPORTANT CONTEXT: All data you receive are RESEARCH-BASED PROJECTIONS and PLANS — estimated figures come from web search results (market prices, HR rates, competitor data, etc.) collected in real-time by analyst agents. This is NOT an actual financial report. You are assessing the risk of a plan that has not yet been realized, so use language like "projection", "plan", "estimate based on research".
 
-Berikan output murni dalam format JSON yang mematuhi skema yang ditetapkan."""),
-            ("user", """Mohon lakukan analisis risiko berdasarkan laporan temuan berikut:
+You are required to:
+1. Develop at least 5 realistic business risk scenarios (`risk_scenarios`) based on the issues from the Critic. Each scenario must have a `scenario_name`, `probability` ("high", "medium", "low"), `impact` ("high", "medium", "low"), and `mitigation`.
+2. Describe the worst-case scenario (`worst_case_summary`) and best-case scenario (`best_case_summary`) from a projection perspective.
+3. Assess the overall viability of the plan (`overall_viability`: "viable", "risky", or "not-viable").
+4. Provide a list of actionable mitigation recommendations (`recommendations`).
+5. Write `reasoning`: 2-3 paragraphs of your narrative thought process in {lang_name}.
 
-Laporan Critic:
+Provide pure output in JSON format adhering to the established schema."""),
+            ("user", f"""Please perform a risk analysis based on the following finding report.
+            
+REMEMBER: You must respond in {lang_name}.
+
+Critic Report:
 {critic_issues_str}
 
-Ingat: ini adalah proyeksi perencanaan, bukan laporan keuangan aktual. Buatlah minimal 5 skenario risiko, jabarkan kondisi worst-case dan best-case, berikan keputusan `overall_viability`, `recommendations`, dan `reasoning` naratif.
-""")
+Remember: this is a planning projection, not an actual financial report.""")
         ])
 
         

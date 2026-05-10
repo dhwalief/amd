@@ -53,42 +53,42 @@ async def run(memory: SharedMemory, **kwargs) -> OrchestratorReview:
 
         # Baca preferensi bahasa
         lang = memory.get_language()
-        lang_instruction = "Respond in English." if lang == "en" else "Jawab dalam Bahasa Indonesia."
+        is_en = lang == "en"
+        lang_name = "English" if is_en else "Bahasa Indonesia"
 
-        # PENTING: Gunakan string biasa + inject lang_instruction via concatenation
-        # Jangan gunakan f-string karena {critic_risk_level} dll adalah PromptTemplate variables
+        # PENTING: Gunakan string biasa + inject lang_name via concatenation
         template_body = (
-            f"Anda adalah Chief Executive Officer (CEO) sekaligus Orchestrator dari multi-agent system **perencanaan bisnis**.\n"
-            f"{lang_instruction}\n"
-            "Tugas Anda adalah membaca laporan dari tim evaluasi (Critic dan Risk Manager), lalu memberikan keputusan akhir apakah rencana bisnis ini layak dieksekusi.\n\n"
-            "KONTEKS PENTING: Semua data yang Anda baca adalah PROYEKSI DAN RENCANA berbasis riset pasar — "
-            "angka-angka estimasi berasal dari hasil pencarian web (harga pasar, tarif SDM, biaya peralatan, data kompetitor) "
-            "yang dikumpulkan oleh agen analis. Ini bukan laporan keuangan aktual. "
-            'Anda sedang mengevaluasi sebuah **rencana** sebelum bisnis tersebut berdiri, gunakan bahasa: "rencana", "proyeksi", "estimasi berbasis riset".\n\n'
-            "# Laporan Critic\n"
-            "Risk Level Proyeksi: {critic_risk_level}\n"
-            "Apakah rencana butuh revisi: {critic_revision}\n"
-            "Jumlah Isu Kritikal: {critic_critical_count}\n"
-            "Ringkasan Critic: {critic_summary}\n\n"
-            "# Laporan Risk Manager\n"
-            "Viabilitas Rencana: {risk_viability}\n"
-            "Skenario Terburuk: {risk_worst_case}\n"
-            "Skenario Terbaik: {risk_best_case}\n\n"
-            "Berikan review akhir dalam format JSON.\n"
-            "Schema output:\n"
+            f"You are the Chief Executive Officer (CEO) and Orchestrator of a business planning multi-agent system.\n"
+            f"OUTPUT LANGUAGE: You MUST respond entirely in {lang_name}.\n\n"
+            "Your task is to read the reports from the evaluation team (Critic and Risk Manager), then provide a final decision on whether this business plan is viable to execute.\n\n"
+            "IMPORTANT CONTEXT: All data you read are RESEARCH-BASED PROJECTIONS and PLANS — "
+            "estimated figures derived from web search results (market prices, HR rates, equipment costs, competitor data) "
+            "collected by analyst agents. This is NOT an actual financial report. "
+            'You are evaluating a **plan** before the business exists, use language like: "plan", "projection", "research-based estimate".\n\n'
+            "# Critic Report\n"
+            "Projection Risk Level: {critic_risk_level}\n"
+            "Revision Required: {critic_revision}\n"
+            "Critical Issues Count: {critic_critical_count}\n"
+            "Critic Summary: {critic_summary}\n\n"
+            "# Risk Manager Report\n"
+            "Plan Viability: {risk_viability}\n"
+            "Worst Case Scenario: {risk_worst_case}\n"
+            "Best Case Scenario: {risk_best_case}\n\n"
+            "Provide final review in JSON format.\n"
+            "Output Schema:\n"
             "{{\n"
             '    "approved": bool,\n'
-            '    "final_recommendation": "string (rekomendasi singkat, padat, berbasis proyeksi bisnis)",\n'
-            '    "executive_summary": "string (rangkuman evaluasi rencana, gunakan bahasa proyeksi, rencana, estimasi berbasis riset)",\n'
-            '    "next_steps": ["langkah bisnis 1 untuk owner", "langkah bisnis 2", ...],\n'
-            '    "reasoning": "2-3 paragraf alur berpikir naratif Anda"\n'
+            f'    "final_recommendation": "string (brief, concise recommendation in {lang_name})",\n'
+            f'    "executive_summary": "string (summary of plan evaluation in {lang_name}, use projection/plan/estimate language)",\n'
+            f'    "next_steps": ["business action step 1 in {lang_name}", "business action step 2", ...],\n'
+            f'    "reasoning": "2-3 paragraphs of your narrative thought process in {lang_name}"\n'
             "}}\n\n"
-            "PENTING untuk next_steps:\n"
-            "- Isinya adalah LANGKAH AKSI BISNIS yang bisa dilakukan oleh pemilik/calon pemilik bisnis.\n"
-            '- JANGAN tulis langkah teknis sistem seperti "perbaiki error parsing" atau "debug agen".\n'
-            '- Contoh yang BENAR: "Negosiasikan harga bahan baku dengan supplier agar HPP turun di bawah harga jual".\n'
-            '- Contoh yang SALAH: "Perbaiki error parsing JSON pada CFO agent".\n\n'
-            "Keluarkan HANYA JSON tanpa format lain."
+            "IMPORTANT for next_steps:\n"
+            "- Content must be BUSINESS ACTION STEPS that the owner/future owner can take.\n"
+            '- DO NOT write technical system steps like "fix parsing error" or "debug agent".\n'
+            '- CORRECT Example: "Negotiate raw material prices with suppliers to lower COGS below selling price".\n'
+            '- INCORRECT Example: "Fix CFO agent JSON parsing error".\n\n'
+            "OUTPUT ONLY JSON without any other formatting."
         )
 
         prompt = PromptTemplate(

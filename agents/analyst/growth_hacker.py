@@ -52,48 +52,51 @@ async def run(memory: SharedMemory) -> MarketOutput:
         # Inisialisasi LLM via Factory
         llm = create_llm("analyst_pool", temperature=0.7, timeout=120)
         
-        # Ekstrak data untuk context prompt
-        competitors_str = json.dumps([c.model_dump() for c in comp_data.competitors], indent=2)
-        market_gap_str = ", ".join(comp_data.market_gap) if comp_data.market_gap else "Belum teridentifikasi"
-        
+        # Baca preferensi bahasa
+        lang = memory.get_language()
+        is_en = lang == "en"
+        lang_name = "English" if is_en else "Bahasa Indonesia"
+
         # 3. Buat System Prompt
         prompt = PromptTemplate.from_template(
-            """Anda adalah Growth Hacker dan Marketing Planner visioner untuk sistem perencanaan bisnis 'Go to America'.
-            
-Tugas Anda adalah memformulasikan ide bisnis yang kreatif dan strategi pemasaran yang kuat, dengan memanfaatkan celah pasar (market gap) dari kompetitor dan potensi lokasi yang ada.
+            f"""You are a visionary Growth Hacker and Marketing Planner for the 'Business Co-Pilot' system.
+OUTPUT LANGUAGE: You MUST respond entirely in {lang_name}.
 
-Konteks Lokasi (Dari Geo Analyst):
-- Skor Lokasi: {location_score} / 1.0
-- Tingkat Permintaan: {demand_level}
-- Keramaian (Foot Traffic): {foot_traffic}
-- Daya Tarik Sekitar (Anchor): {nearby_anchor}
-- Risiko Lokasi: {risk_factors}
-- Rekomendasi Lokasi: {location_rec}
+Your task is to formulate creative business ideas and strong marketing strategies, utilizing market gaps from competitors and location potential.
 
-Konteks Kompetitor & Pasar (Dari Competitor Scout):
-- Daftar Kompetitor Utama:
-{competitors}
-- Celah Pasar (Market Gap): {market_gap}
-- Peluang Diferensiasi: {differentiation}
+Location Context (From Geo Analyst):
+- Location Score: {{location_score}} / 1.0
+- Demand Level: {{demand_level}}
+- Foot Traffic: {{foot_traffic}}
+- Nearby Anchors: {{nearby_anchor}}
+- Location Risks: {{risk_factors}}
+- Location Recommendation: {{location_rec}}
 
-Tugas Anda adalah merumuskan strategi dan mengembalikannya HANYA dalam format JSON yang valid.
-Format JSON harus persis seperti ini tanpa tambahan teks apapun di luar JSON:
+Competitor & Market Context (From Competitor Scout):
+- Main Competitors:
+{{competitors}}
+- Market Gaps: {{market_gap}}
+- Differentiation Opportunities: {{differentiation}}
+
+Task: Formulate the strategy and return it ONLY in valid JSON format.
+JSON Schema:
 {{
-    "business_ideas": ["ide 1", "ide 2", "ide 3"],
-    "recommended_idea": "...",
-    "target_segment": "...",
-    "value_proposition": "...",
+    "business_ideas": ["creative idea 1", "idea 2", "idea 3"],
+    "recommended_idea": "detailed best idea...",
+    "target_segment": "demographic/psychographic target...",
+    "value_proposition": "Unique Value Proposition...",
     "marketing_channels": ["channel 1", "channel 2"],
-    "go_to_market_strategy": "..."
+    "go_to_market_strategy": "short paragraph about the first concrete steps..."
 }}
 
-Panduan pengisian nilai JSON:
-- business_ideas: array of string berisi 3 hingga 5 ide bisnis yang kreatif dan relevan.
-- recommended_idea: 1 ide bisnis terbaik dan paling spesifik dari daftar di atas.
-- target_segment: penjelasan demografi/psikografi segmen pasar yang dituju.
-- value_proposition: nilai jual unik (Unique Value Proposition) yang membedakan dari kompetitor.
-- marketing_channels: array of string berisi saluran pemasaran yang paling efektif untuk target.
-- go_to_market_strategy: paragraf singkat mengenai langkah konkret pertama meluncurkan bisnis ini.
+Instructions for JSON values:
+- Use {lang_name} for ALL text values inside the JSON.
+- business_ideas: array of strings containing 3 to 5 creative and relevant business ideas.
+- recommended_idea: the 1 best and most specific business idea from the list.
+- target_segment: description of the target market segment.
+- value_proposition: what makes this business different from competitors.
+- marketing_channels: array of effective marketing channels.
+- go_to_market_strategy: brief paragraph about the launch steps.
 """
         )
         
