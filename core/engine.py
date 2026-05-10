@@ -125,6 +125,11 @@ class DependencyEngine:
         results = {}
         completed_agents = set()
 
+        # Hydrate completed agents from memory so we can resume
+        for key in DAG.keys():
+            if self.memory.is_done(key):
+                completed_agents.add(key)
+
         logger.info("🚀 Starting DAG execution...")
         logger.info(f"Total agents: {len(DAG)}")
 
@@ -141,6 +146,11 @@ class DependencyEngine:
                 logger.warning("🚨 Deadlock detected! No executable agents but not all completed.")
                 logger.warning(f"Completed: {completed_agents}")
                 logger.warning(f"Remaining: {set(DAG.keys()) - completed_agents}")
+                break
+
+            # Pause execution if USER_VALIDATION is the next step
+            if AgentKey.USER_VALIDATION in executable:
+                logger.info("⏸️ System paused for USER_VALIDATION. Waiting for user input via UI.")
                 break
 
             # Execute all executable agents in parallel

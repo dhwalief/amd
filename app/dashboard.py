@@ -7,7 +7,7 @@ Kerjaan Dev2 di Week 2 Phase 2.
 Flow:
 1. User input business context via form
 2. Submit untuk start DAG execution
-3. Real-time status monitoring
+3. Real-time status monitorings
 4. Display hasil per agent
 5. Export report
 
@@ -16,15 +16,33 @@ Jalankan: streamlit run app/dashboard.py
 
 import asyncio
 import logging
+import sys
+import os
+import threading
 from datetime import datetime
+
+# Tambahkan root directory ke PYTHONPATH agar bisa mengimpor 'core'
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import streamlit as st
 
 from core.shared_memory import MockSharedMemory, AgentKey
-from core.schemas import BusinessContext, InquisitorOutput, AgentStatus
+from core.schemas import BusinessContext, InquisitorOutput, AgentStatus, AgentOutput
 from app.components import display_dag_status, display_progress_bar, display_agent_output
 
 logger = logging.getLogger(__name__)
+
+def run_ai_in_background(memory):
+    from agents.executive.orchestrator import setup_and_run
+    import asyncio
+    
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(setup_and_run(memory))
+        loop.close()
+    except Exception as e:
+        logger.error(f"Error in AI background thread: {e}")
 
 # Streamlit page config
 st.set_page_config(
@@ -118,6 +136,12 @@ with st.sidebar:
         st.session_state.memory.set(AgentKey.INQUISITOR, output)
         st.session_state.execution_started = True
         
+        # Start AI in background thread
+        from streamlit.runtime.scriptrunner import add_script_run_ctx
+        thread = threading.Thread(target=run_ai_in_background, args=(st.session_state.memory,))
+        add_script_run_ctx(thread)
+        thread.start()
+        
         st.success("✅ Context stored! Starting agent execution...")
 
 
@@ -172,11 +196,38 @@ with tab1:
         st.divider()
         display_progress_bar(completed, total_agents, "Overall Progress")
         
+        # UI untuk Fase 1 Selesai (User Validation)
+        growth_hacker_done = st.session_state.memory.is_done(AgentKey.GROWTH_HACKER)
+        user_val_done = st.session_state.memory.is_done(AgentKey.USER_VALIDATION)
+        
+        if growth_hacker_done and not user_val_done:
+            st.warning("⏸️ Fase Eksplorasi (Fase 1) Selesai. Sistem menunggu keputusan Anda sebelum melanjutkan analisis.")
+            st.subheader("💡 Pilih Ide Bisnis untuk Dianalisis Lebih Lanjut")
+            from core.schemas import MarketOutput, UserValidationOutput
+            market_data = st.session_state.memory.get(AgentKey.GROWTH_HACKER, MarketOutput)
+            if market_data and market_data.business_ideas:
+                selected = st.radio("Berdasarkan rekomendasi AI, ide mana yang ingin Anda jalankan?", market_data.business_ideas)
+                feedback = st.text_area("Catatan tambahan untuk tim finansial & operasional (opsional)")
+                if st.button("🚀 Setujui & Lanjutkan ke Fase 2", type="primary"):
+                    val_output = UserValidationOutput(selected_idea=selected, feedback_notes=feedback)
+                    st.session_state.memory.set(AgentKey.USER_VALIDATION, val_output)
+                    # Restart AI thread
+                    from streamlit.runtime.scriptrunner import add_script_run_ctx
+                    thread = threading.Thread(target=run_ai_in_background, args=(st.session_state.memory,))
+                    add_script_run_ctx(thread)
+                    thread.start()
+                    st.success("Validasi diterima! Melanjutkan eksekusi ke Fase 2...")
+                    import time
+                    time.sleep(1)
+                    st.rerun()
+        
         # Auto-refresh note
-        st.caption("💡 Tip: Page auto-refreshes every 2 seconds during execution")
-
-
-with tab2:
+        # Jangan auto-refresh jika sedang menunggu validasi user agar UI form tidak berkedip/ter-reset
+        if not (growth_hacker_done and not user_val_done):
+            st.caption("💡 Tip: Page auto-refreshes every 2 seconds during execution")
+            import time
+            time.sleep(2)
+            st.rerun()
     st.subheader("Agent Results")
     
     if not st.session_state.execution_started:
@@ -191,22 +242,29 @@ with tab2:
         with col1:
             st.write("**Executive Layer**")
             for agent_key in [AgentKey.ORCHESTRATOR, AgentKey.CRITIC, AgentKey.RISK_MANAGER]:
-                if status_snapshot[agent_key.value] == "done":
-                    output = st.session_state.memory.get(agent_key, AgentOutput)
-                    # TODO: display_agent_output(agent_key.value, output)
+                if status_snapshot.get(agent_key.value) == "done":
                     st.success(f"✅ {agent_key.value}")
+                    with st.expander(f"Lihat Hasil {agent_key.value}"):
+                        output = st.session_state.memory.get(agent_key, AgentOutput)
+                        display_agent_output(agent_key.value, output)
         
         with col2:
             st.write("**Analyst Layer**")
             for agent_key in [AgentKey.GEO_ANALYST, AgentKey.COMPETITOR, AgentKey.GROWTH_HACKER, AgentKey.CFO, AgentKey.PRICING]:
-                if status_snapshot[agent_key.value] == "done":
+                if status_snapshot.get(agent_key.value) == "done":
                     st.success(f"✅ {agent_key.value}")
+                    with st.expander(f"Lihat Hasil {agent_key.value}"):
+                        output = st.session_state.memory.get(agent_key, AgentOutput)
+                        display_agent_output(agent_key.value, output)
         
         with col3:
             st.write("**Worker Layer**")
-            for agent_key in [AgentKey.INQUISITOR, AgentKey.LEGAL, AgentKey.PRODUCT_ARCHITECT, AgentKey.HR_PLANNER]:
-                if status_snapshot[agent_key.value] == "done":
+            for agent_key in [AgentKey.INQUISITOR, AgentKey.LEGAL, AgentKey.PRODUCT_ARCHITECT, AgentKey.HR_PLANNER, AgentKey.SOP_DESIGNER]:
+                if status_snapshot.get(agent_key.value) == "done":
                     st.success(f"✅ {agent_key.value}")
+                    with st.expander(f"Lihat Hasil {agent_key.value}"):
+                        output = st.session_state.memory.get(agent_key, AgentOutput)
+                        display_agent_output(agent_key.value, output)
 
 
 with tab3:
@@ -236,8 +294,15 @@ st.divider()
 st.caption(f"🕐 Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 st.caption("💼 Go to America Multi-Agent System v0.1")
 
-# Auto-refresh setiap 2 detik saat execution berjalan
+# Auto-refresh setiap 2 detik saat execution berjalan (kecuali sedang tunggu validasi)
 if st.session_state.execution_started:
-    import time
-    time.sleep(2)
-    st.rerun()
+    growth_done = st.session_state.memory.is_done(AgentKey.GROWTH_HACKER)
+    user_done = st.session_state.memory.is_done(AgentKey.USER_VALIDATION)
+    
+    # Cek apakah eksekusi benar-benar sudah selesai semua
+    all_done = st.session_state.memory.is_done(AgentKey.ORCHESTRATOR)
+    
+    if not all_done and not (growth_done and not user_done):
+        import time
+        time.sleep(2)
+        st.rerun()

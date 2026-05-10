@@ -65,6 +65,7 @@ class AgentKey(str, Enum):
     COMPETITOR        = "competitor_scout"
     GROWTH_HACKER     = "growth_hacker"
     PRICING           = "pricing_strategist"
+    USER_VALIDATION   = "user_validation"
     CFO               = "cfo"
     LEGAL             = "legal_compliance"
     PRODUCT_ARCHITECT = "product_architect"
@@ -86,9 +87,10 @@ DAG: dict[AgentKey, list[AgentKey]] = {
     AgentKey.COMPETITOR:        [AgentKey.INQUISITOR],
     AgentKey.GROWTH_HACKER:     [AgentKey.GEO_ANALYST, AgentKey.COMPETITOR],
     AgentKey.PRICING:           [AgentKey.GEO_ANALYST, AgentKey.COMPETITOR],
-    AgentKey.CFO:               [AgentKey.GROWTH_HACKER, AgentKey.PRICING],
-    AgentKey.LEGAL:             [AgentKey.CFO, AgentKey.PRICING],
-    AgentKey.PRODUCT_ARCHITECT: [AgentKey.GROWTH_HACKER],
+    AgentKey.USER_VALIDATION:   [AgentKey.GROWTH_HACKER, AgentKey.PRICING],
+    AgentKey.CFO:               [AgentKey.USER_VALIDATION],
+    AgentKey.LEGAL:             [AgentKey.CFO, AgentKey.USER_VALIDATION],
+    AgentKey.PRODUCT_ARCHITECT: [AgentKey.USER_VALIDATION],
     AgentKey.HR_PLANNER:        [AgentKey.CFO],
     AgentKey.SUPPLY_PLANNER:    [AgentKey.CFO],
     AgentKey.SOP_DESIGNER:      [AgentKey.PRODUCT_ARCHITECT,
@@ -96,6 +98,7 @@ DAG: dict[AgentKey, list[AgentKey]] = {
                                   AgentKey.SUPPLY_PLANNER],
     AgentKey.CRITIC:            [AgentKey.GEO_ANALYST, AgentKey.COMPETITOR,
                                   AgentKey.GROWTH_HACKER, AgentKey.PRICING,
+                                  AgentKey.USER_VALIDATION,
                                   AgentKey.CFO, AgentKey.LEGAL,
                                   AgentKey.PRODUCT_ARCHITECT, AgentKey.HR_PLANNER,
                                   AgentKey.SUPPLY_PLANNER, AgentKey.SOP_DESIGNER],

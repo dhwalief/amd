@@ -13,6 +13,7 @@ ATURAN:
 """
 
 from pydantic import BaseModel, Field
+from core.shared_memory import MockSharedMemory, AgentKey   
 from typing import Optional
 from datetime import datetime
 from enum import Enum
@@ -112,6 +113,13 @@ class PricingOutput(AgentOutput):
     pricing_strategy: str                # "penetration" | "skimming" | "value-based"
     margin_percentage: float             # target margin (%)
     justification: str                   # alasan pricing
+
+
+class UserValidationOutput(AgentOutput):
+    """Output dari input manual pengguna di UI (Fase 1)."""
+    agent_name: str = "user_validation"
+    selected_idea: str                   # Ide bisnis yang dipilih oleh user
+    feedback_notes: Optional[str] = None # Catatan tambahan dari user
 
 
 # ─────────────────────────────────────────────

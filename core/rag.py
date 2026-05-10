@@ -30,11 +30,12 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 import numpy as np
+# pyrefly: ignore [missing-import]
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
-from langchain.document_loaders import TextLoader
-from langchain.schema import Document
+from langchain_community.embeddings import OllamaEmbeddings
+from langchain_community.document_loaders import TextLoader
+from langchain_core.documents import Document
 
 logger = logging.getLogger(__name__)
 
@@ -46,20 +47,20 @@ class RAGPipeline:
     Menggunakan:
     - LangChain untuk document loading & splitting
     - FAISS untuk vector search
-    - OpenAI embeddings (atau local alternative)
+    - Ollama embeddings (lokal AMD)
     """
 
     def __init__(
         self,
         kb_path: str = "data/rag_kb/",
-        embedding_model: str = "text-embedding-3-small",  # OpenAI
+        embedding_model: str = "nomic-embed-text",  # Default lokal Ollama
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
     ):
         """
         Args:
             kb_path: Path ke knowledge base folder
-            embedding_model: Model untuk generate embeddings
+            embedding_model: Model untuk generate embeddings di Ollama
             chunk_size: Size per chunk saat split documents
             chunk_overlap: Overlap antara chunks
         """
@@ -70,9 +71,8 @@ class RAGPipeline:
         
         logger.info(f"Initializing RAG pipeline from {self.kb_path}")
         
-        # TODO (Dev2): Initialize embeddings
-        # Untuk saat ini, skip embeddings — langsung mock data
-        # self.embeddings = OpenAIEmbeddings(model=embedding_model)
+        # Initialize embeddings lokal
+        self.embeddings = OllamaEmbeddings(model=embedding_model)
 
     def load_documents(self) -> List[Document]:
         """
@@ -123,12 +123,14 @@ class RAGPipeline:
         chunks = text_splitter.split_documents(documents)
         logger.info(f"Total chunks: {len(chunks)}")
         
-        # 3. Build vector store (dengan embeddings)
-        # TODO (Dev2): Uncomment saat embeddings ready
-        # self.vector_store = FAISS.from_documents(chunks, self.embeddings)
-        # self.vector_store.save_local("data/.faiss_index")
-        
-        logger.info("✅ RAG index built successfully")
+        # 3. Build vector store (dengan embeddings lokal)
+        try:
+            self.vector_store = FAISS.from_documents(chunks, self.embeddings)
+            # Opsional: Simpan index ke disk agar tidak build ulang setiap restart
+            # self.vector_store.save_local("data/.faiss_index")
+            logger.info("✅ RAG index built successfully")
+        except Exception as e:
+            logger.error(f"Gagal build FAISS index: {e}")
 
     def retrieve(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
         """
@@ -183,8 +185,6 @@ class RAGPipeline:
         Returns:
             List of dicts
         """
-        # TODO (Dev2): Filter by category metadata sebelum search
-        # For now, just call regular retrieve
         return self.retrieve(query, k=k)
 
 
@@ -194,12 +194,11 @@ def get_rag_pipeline() -> RAGPipeline:
     Disarankan call di startup, cache hasilnya.
     """
     rag = RAGPipeline(kb_path="data/rag_kb/")
-    # rag.build_index()  # Uncomment saat embeddings ready
+    rag.build_index()  # Build index otomatis di awal
     return rag
 
 
 if __name__ == "__main__":
     # Simple test
-    rag = RAGPipeline()
-    # TODO: Test retrieve setelah ada documents
+    rag = get_rag_pipeline()
     print("✅ RAG pipeline initialized")

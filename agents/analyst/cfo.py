@@ -26,10 +26,13 @@ async def run(memory: SharedMemory) -> FinanceOutput:
         market_data = memory.get(AgentKey.GROWTH_HACKER, MarketOutput)
         pricing_data = memory.get(AgentKey.PRICING, PricingOutput)
         
+        from core.schemas import UserValidationOutput
+        user_val = memory.get(AgentKey.USER_VALIDATION, UserValidationOutput)
+        
         # Validasi ketersediaan data dependency
         missing_deps = []
-        if not market_data or market_data.status != AgentStatus.DONE:
-            missing_deps.append("Growth Hacker")
+        if not user_val or user_val.status != AgentStatus.DONE:
+            missing_deps.append("User Validation")
         if not pricing_data or pricing_data.status != AgentStatus.DONE:
             missing_deps.append("Pricing Strategist")
             
@@ -55,26 +58,20 @@ async def run(memory: SharedMemory) -> FinanceOutput:
             return output
         
         # Inisialisasi LLM via Factory
-        llm = create_llm("cfo", temperature=0.6, timeout=120)
+        llm = create_llm("cfo", temperature=0.3, timeout=120)
         
-        # 3. Buat System Prompt
+        # 3. Buat System Prompt (Hanya minta List Item)
         prompt = PromptTemplate.from_template(
-            """Anda adalah Chief Financial Officer (CFO) untuk sistem perencanaan bisnis 'Go to America'.
+            """Anda adalah Data Extractor Keuangan.
             
-Tugas Anda adalah merumuskan proyeksi keuangan yang realistis, Break Even Point (BEP), dan kebutuhan modal awal berdasarkan strategi pasar dan penetapan harga.
+Tugas Anda adalah merumuskan DAFTAR kebutuhan modal awal dan biaya bulanan berdasarkan ide bisnis yang telah disetujui pengguna.
+JANGAN MENGHITUNG TOTALNYA, sistem kami yang akan menghitungnya.
 
-Konteks Bisnis (Dari Growth Hacker):
-- Ide Bisnis Terpilih: {recommended_idea}
-- Segmen Target: {target_segment}
-- Go-to-Market Strategy: {go_to_market}
+Ide Bisnis Tervalidasi: {selected_idea}
+Harga Jual Rekomendasi: Rp {recommended_price:,.2f}
+Target Margin: {margin_percentage}%
 
-Konteks Harga (Dari Pricing Strategist):
-- Harga Jual Rekomendasi: Rp {recommended_price:,.2f}
-- Strategi Harga: {pricing_strategy}
-- Target Margin: {margin_percentage}%
-
-Tugas Anda adalah merumuskan rencana keuangan dan mengembalikannya HANYA dalam format JSON yang valid.
-Format JSON harus persis seperti ini tanpa tambahan teks apapun di luar JSON:
+Keluarkan HANYA format JSON valid seperti ini:
 {{
     "startup_cost": [
         {{"name": "...", "amount": 0.0, "category": "equipment", "is_recurring": false}}
@@ -82,49 +79,22 @@ Format JSON harus persis seperti ini tanpa tambahan teks apapun di luar JSON:
     "monthly_cost": [
         {{"name": "...", "amount": 0.0, "category": "operational", "is_recurring": true}}
     ],
-    "total_startup_cost": 0.0,
-    "total_monthly_cost": 0.0,
-    "recommended_capital": 0.0,
-    "bep_units": 0.0,
-    "bep_revenue": 0.0,
-    "bep_months": 0.0,
-    "projected_monthly_revenue": 0.0,
-    "projected_net_profit_month6": 0.0,
     "risk_level": "medium"
 }}
-
-Panduan pengisian nilai JSON:
-- startup_cost: array object (name, amount, category, is_recurring). category harus salah satu dari: "equipment", "operational", "marketing". is_recurring umumnya false untuk startup cost.
-- monthly_cost: array object (name, amount, category, is_recurring). category harus salah satu dari: "equipment", "operational", "marketing". is_recurring umumnya true untuk biaya bulanan.
-- total_startup_cost: total jumlah (float) dari seluruh startup_cost.
-- total_monthly_cost: total jumlah (float) dari seluruh monthly_cost.
-- recommended_capital: total_startup_cost ditambah buffer 25% untuk cadangan kas.
-- bep_units: estimasi jumlah unit terjual yang dibutuhkan untuk mencapai BEP.
-- bep_revenue: total pendapatan dalam Rupiah untuk mencapai BEP.
-- bep_months: estimasi waktu (dalam bulan) untuk mencapai BEP.
-- projected_monthly_revenue: estimasi pendapatan kotor per bulan (Rupiah).
-- projected_net_profit_month6: estimasi laba bersih di bulan ke-6 beroperasi (Rupiah).
-- risk_level: tingkat risiko finansial, harus salah satu dari: "high", "medium", atau "low".
 """
         )
         
-        logger.info("Mengirim prompt ke LLM untuk merumuskan proyeksi keuangan...")
+        logger.info("Mengirim prompt ke LLM untuk ekstrak item biaya...")
         
         chain = prompt | llm
         response = await chain.ainvoke({
-            "recommended_idea": market_data.recommended_idea,
-            "target_segment": market_data.target_segment,
-            "go_to_market": market_data.go_to_market_strategy,
+            "selected_idea": user_val.selected_idea,
             "recommended_price": pricing_data.recommended_price,
-            "pricing_strategy": pricing_data.pricing_strategy,
             "margin_percentage": pricing_data.margin_percentage
         })
         
         # 4. Parsing JSON dari output LLM
-        logger.info("Memparsing respons JSON dari LLM...")
-        
         content = response.content.strip()
-        # Membersihkan backticks jika LLM mereturn markdown JSON
         if content.startswith("```json"):
             content = content[7:-3].strip()
         elif content.startswith("```"):
@@ -132,11 +102,53 @@ Panduan pengisian nilai JSON:
             
         json_data = json.loads(content)
         
-        # 5. Validasi Pydantic, Buat Output dan Simpan ke Memory
-        output = FinanceOutput(**json_data)
-        memory.set(AgentKey.CFO, output)
+        # 5. KALKULASI DETERMINISTIK PYTHON (Mencegah Halusinasi Math LLM)
+        startup_costs = json_data.get("startup_cost", [])
+        monthly_costs = json_data.get("monthly_cost", [])
         
-        logger.info("Eksekusi CFO agent selesai dengan sukses.")
+        total_startup = sum(item.get("amount", 0) for item in startup_costs)
+        total_monthly = sum(item.get("amount", 0) for item in monthly_costs)
+        
+        recommended_capital = total_startup * 1.25  # Buffer 25%
+        
+        # Hitung BEP (Break Even Point)
+        price = pricing_data.recommended_price
+        margin = pricing_data.margin_percentage / 100.0
+        contribution_margin_per_unit = price * margin
+        
+        if contribution_margin_per_unit > 0:
+            bep_units = total_monthly / contribution_margin_per_unit
+        else:
+            bep_units = 0
+            
+        bep_revenue = bep_units * price
+        
+        # Asumsi penjualan (2x dari BEP untuk estimasi profit)
+        projected_monthly_revenue = bep_revenue * 2
+        projected_net_profit = projected_monthly_revenue - total_monthly - (projected_monthly_revenue * (1 - margin))
+        
+        if projected_net_profit > 0:
+            bep_months = total_startup / projected_net_profit
+        else:
+            bep_months = 999.0
+        
+        # Buat objek akhir
+        output = FinanceOutput(
+            startup_cost=startup_costs,
+            monthly_cost=monthly_costs,
+            total_startup_cost=total_startup,
+            total_monthly_cost=total_monthly,
+            recommended_capital=recommended_capital,
+            bep_units=bep_units,
+            bep_revenue=bep_revenue,
+            bep_months=bep_months,
+            projected_monthly_revenue=projected_monthly_revenue,
+            projected_net_profit_month6=projected_net_profit,
+            risk_level=json_data.get("risk_level", "medium")
+        )
+        
+        memory.set(AgentKey.CFO, output)
+        logger.info("Eksekusi CFO agent (Deterministic Math) selesai dengan sukses.")
         return output
 
     except ValidationError as e:
